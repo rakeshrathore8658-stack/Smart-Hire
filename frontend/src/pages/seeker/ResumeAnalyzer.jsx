@@ -42,8 +42,8 @@ const ResumeAnalyzer = () => {
       available: false,
       status: 'DEGRADED',
       installedModels: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
-      recommendedModel: 'gemini-2.5-flash',
-      description: 'Deep ATS reasoning, resume rewriting, and semantic analysis.',
+      recommendedModel: 'auto',
+      description: 'Deep ATS reasoning, resume rewriting, and semantic analysis with automatic multi-model failover.',
     },
   ]);
 
@@ -81,7 +81,7 @@ const ResumeAnalyzer = () => {
             const geminiProv = formatted.find((p) => p.id === 'gemini');
             if (geminiProv && geminiProv.available) {
               setAiProvider('gemini');
-              setSelectedModel(geminiProv.recommendedModel || 'gemini-2.5-flash');
+              setSelectedModel('auto');
             } else {
               setAiProvider('local');
               setSelectedModel('Rule-Based Local Engine v2.0');
@@ -683,9 +683,13 @@ const ResumeAnalyzer = () => {
                     onChange={(e) => {
                       const newProv = e.target.value;
                       setAiProvider(newProv);
-                      const target = providers.find((p) => p.id === newProv);
-                      if (target) {
-                        setSelectedModel(target.recommendedModel || (target.installedModels && target.installedModels[0]) || '');
+                      if (newProv === 'gemini') {
+                        setSelectedModel('auto');
+                      } else {
+                        const target = providers.find((p) => p.id === newProv);
+                        if (target) {
+                          setSelectedModel(target.recommendedModel || (target.installedModels && target.installedModels[0]) || '');
+                        }
                       }
                     }}
                   >
@@ -717,9 +721,18 @@ const ResumeAnalyzer = () => {
                     className="form-control"
                     value={selectedModel}
                     onChange={(e) => setSelectedModel(e.target.value)}
-                    disabled={availableModels.length === 0}
+                    disabled={aiProvider !== 'gemini' && availableModels.length === 0}
                   >
-                    {availableModels.length > 0 ? (
+                    {aiProvider === 'gemini' ? (
+                      <>
+                        <option value="auto">✨ Auto (Any Working Gemini Model)</option>
+                        {availableModels.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </>
+                    ) : availableModels.length > 0 ? (
                       availableModels.map((m) => (
                         <option key={m} value={m}>
                           {m}

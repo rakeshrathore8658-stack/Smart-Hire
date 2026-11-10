@@ -92,8 +92,9 @@ public class ResumeAnalysisService {
         analysisDTO.setFileName(resume.getFileName());
         analysisDTO.setTargetJobRole(role);
         analysisDTO.setJobDescription(jobDescription);
-        analysisDTO.setAiProvider(actualProviderUsed);
-        analysisDTO.setModelUsed(modelName != null && !modelName.isBlank() ? modelName : actualProviderUsed);
+        analysisDTO.setAiProvider(fallbackUsed ? actualProviderUsed : provider.getProviderName());
+        String effectiveModel = fallbackUsed ? "Local Rule-Based NLP" : (provider instanceof com.resumeanalyzer.ai.GeminiAIProvider ? ((com.resumeanalyzer.ai.GeminiAIProvider) provider).getLastSuccessfulModel() : (modelName != null && !modelName.isBlank() ? modelName : actualProviderUsed));
+        analysisDTO.setModelUsed(effectiveModel);
         analysisDTO.setFallbackUsed(fallbackUsed);
         analysisDTO.setFallbackReason(fallbackReason);
         analysisDTO.setAnalyzedAt(LocalDateTime.now().toString());

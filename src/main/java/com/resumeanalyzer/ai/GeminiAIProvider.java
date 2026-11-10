@@ -26,6 +26,7 @@ public class GeminiAIProvider implements AIProvider {
 
     // Cache of active models per API key: Map<apiKey, CachedModelList>
     private final Map<String, CachedModelList> modelCache = new ConcurrentHashMap<>();
+    private volatile String lastSuccessfulModel = "gemini-auto";
 
     private static class CachedModelList {
         final List<String> models;
@@ -66,15 +67,15 @@ public class GeminiAIProvider implements AIProvider {
                 : config.getGemini().getApiKey();
 
         if (apiKey == null || apiKey.isBlank() || apiKey.contains("${")) {
-            throw new IllegalStateException("Gemini API key is not configured. Please provide a valid Gemini API key in the UI or set GEMINI_API_KEY environment variable.");
+            throw new IllegalStateException("Gemini API key is not configured. Please enter your Gemini API key in the UI or set GEMINI_API_KEY environment variable.");
         }
 
-        // Dynamically discover active models for this API key so 404 is completely avoided
-        String targetModel = resolveActiveModel(modelOverride, apiKey);
-        log.info("Resolved Gemini model to execute: '{}' (requested: '{}')", targetModel, modelOverride);
+        // Build exhaustive candidate model list so response is guaranteed from ANY active model
+        List<String> candidateModels = buildCandidateModelList(modelOverride, apiKey);
+        log.info("Gemini multi-model fallback list: {}", candidateModels);
 
         try {
-            // 1. System Instruction
+            // 1. Build Payload
             Map<String, Object> requestPayload = new HashMap<>();
             if (systemInstruction != null && !systemInstruction.isBlank()) {
                 Map<String, Object> sysInstr = new HashMap<>();
@@ -84,7 +85,6 @@ public class GeminiAIProvider implements AIProvider {
                 requestPayload.put("systemInstruction", sysInstr);
             }
 
-            // 2. User Content Prompt
             List<Map<String, Object>> contents = new ArrayList<>();
             Map<String, Object> contentMap = new HashMap<>();
             contentMap.put("role", "user");
@@ -94,7 +94,6 @@ public class GeminiAIProvider implements AIProvider {
             contents.add(contentMap);
             requestPayload.put("contents", contents);
 
-            // 3. Generation Config (force JSON mode)
             Map<String, Object> generationConfig = new HashMap<>();
             generationConfig.put("responseMimeType", "application/json");
             generationConfig.put("temperature", 0.2);
@@ -102,76 +101,74 @@ public class GeminiAIProvider implements AIProvider {
 
             String requestBodyJson = objectMapper.writeValueAsString(requestPayload);
 
-            // Build candidate URLs with v1beta and v1, prioritizing resolved target model
-            List<String> candidateUrls = new ArrayList<>();
-            candidateUrls.add("https://generativelanguage.googleapis.com/v1beta/models/" + targetModel + ":generateContent?key=" + apiKey);
-            candidateUrls.add("https://generativelanguage.googleapis.com/v1/models/" + targetModel + ":generateContent?key=" + apiKey);
-
-            // Fallback models in case primary resolved target encounters unexpected 404
-            String[] fallbacks = {"gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-2.5-pro", "gemini-1.5-pro"};
-            for (String fb : fallbacks) {
-                if (!fb.equalsIgnoreCase(targetModel)) {
-                    candidateUrls.add("https://generativelanguage.googleapis.com/v1beta/models/" + fb + ":generateContent?key=" + apiKey);
-                    candidateUrls.add("https://generativelanguage.googleapis.com/v1/models/" + fb + ":generateContent?key=" + apiKey);
-                }
-            }
-
-            HttpResponse<String> primaryResponse = null;
-            HttpResponse<String> lastResponse = null;
+            // 2. Iterate through all models and API versions until ANY model succeeds
+            String[] apiVersions = {"v1beta", "v1"};
+            HttpResponse<String> lastErrorResponse = null;
             Exception lastException = null;
 
-            for (String targetUrl : candidateUrls) {
-                try {
-                    URI uri = URI.create(targetUrl);
-                    HttpRequest request = HttpRequest.newBuilder()
-                            .uri(uri)
-                            .header("Content-Type", "application/json")
-                            .header("x-goog-api-key", apiKey)
-                            .timeout(Duration.ofSeconds(config.getGemini().getTimeoutSeconds()))
-                            .POST(HttpRequest.BodyPublishers.ofString(requestBodyJson))
-                            .build();
+            for (String modelName : candidateModels) {
+                for (String apiVer : apiVersions) {
+                    String targetUrl = "https://generativelanguage.googleapis.com/" + apiVer + "/models/" + modelName + ":generateContent?key=" + apiKey;
+                    try {
+                        HttpRequest request = HttpRequest.newBuilder()
+                                .uri(URI.create(targetUrl))
+                                .header("Content-Type", "application/json")
+                                .header("x-goog-api-key", apiKey)
+                                .timeout(Duration.ofSeconds(config.getGemini().getTimeoutSeconds()))
+                                .POST(HttpRequest.BodyPublishers.ofString(requestBodyJson))
+                                .build();
 
-                    log.info("Sending resume analysis request to Gemini URL: {}", targetUrl.replaceAll("key=[^&]+", "key=REDACTED"));
-                    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-                    if (primaryResponse == null) {
-                        primaryResponse = response;
-                    }
-                    lastResponse = response;
+                        log.info("Trying Gemini model: '{}' on API version '{}'", modelName, apiVer);
+                        HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-                    if (response.statusCode() == 200) {
-                        JsonNode root = objectMapper.readTree(response.body());
-                        JsonNode candidates = root.path("candidates");
-                        if (candidates.isArray() && !candidates.isEmpty()) {
-                            JsonNode textNode = candidates.get(0).path("content").path("parts").get(0).path("text");
-                            String rawText = textNode.asText();
-                            return cleanMarkdownCodeBlocks(rawText);
+                        if (response.statusCode() == 200) {
+                            JsonNode root = objectMapper.readTree(response.body());
+                            JsonNode candidates = root.path("candidates");
+                            if (candidates.isArray() && !candidates.isEmpty()) {
+                                JsonNode textNode = candidates.get(0).path("content").path("parts").get(0).path("text");
+                                String rawText = textNode.asText();
+                                this.lastSuccessfulModel = modelName;
+                                log.info("SUCCESS: Received valid analysis response from Gemini model '{}' on '{}'", modelName, apiVer);
+                                return cleanMarkdownCodeBlocks(rawText);
+                            }
                         }
-                        throw new RuntimeException("Unexpected Gemini response structure: " + response.body());
-                    } else if (response.statusCode() == 404) {
-                        log.warn("Gemini endpoint 404 for {}. Trying next fallback candidate...", targetUrl.replaceAll("key=[^&]+", "key=REDACTED"));
-                        continue;
-                    } else {
-                        // 400, 401, 403, 429 error -> fail fast with Google's clear message
-                        log.warn("Gemini API error (Status {}): {}", response.statusCode(), response.body());
-                        throw new RuntimeException("Gemini API error " + response.statusCode() + ": " + response.body());
+
+                        lastErrorResponse = response;
+                        String body = response.body();
+
+                        // If API key itself is invalid, no model will work; fail fast
+                        if (response.statusCode() == 400 && body != null && body.contains("API_KEY_INVALID")) {
+                            log.error("Gemini API key is invalid: {}", body);
+                            throw new RuntimeException("Invalid Gemini API key provided. Please check your key at Google AI Studio.");
+                        }
+
+                        if (response.statusCode() == 403 && body != null && body.contains("PERMISSION_DENIED")) {
+                            log.error("Gemini permission denied: {}", body);
+                            throw new RuntimeException("Gemini permission denied: " + body);
+                        }
+
+                        // For 404 (not found), 400 (unsupported model), 429 (rate limit), log and try NEXT model
+                        log.warn("Gemini model '{}' on '{}' returned status {} ({}). Automatically trying next candidate model...",
+                                modelName, apiVer, response.statusCode(), summarizeError(body));
+
+                    } catch (RuntimeException re) {
+                        if (re.getMessage() != null && (re.getMessage().contains("Invalid Gemini API key") || re.getMessage().contains("permission denied"))) {
+                            throw re;
+                        }
+                        lastException = re;
+                    } catch (Exception e) {
+                        log.warn("Exception connecting to Gemini model '{}' ({}): {}. Trying next...", modelName, apiVer, e.getMessage());
+                        lastException = e;
                     }
-                } catch (RuntimeException re) {
-                    if (re.getMessage() != null && re.getMessage().contains("Gemini API error")) {
-                        throw re;
-                    }
-                    lastException = re;
-                } catch (Exception e) {
-                    lastException = e;
                 }
             }
 
-            HttpResponse<String> errResp = (primaryResponse != null) ? primaryResponse : lastResponse;
-            if (errResp != null) {
-                log.warn("All candidate Gemini endpoints failed. Status: {}, Body: {}", errResp.statusCode(), errResp.body());
-                throw new RuntimeException("Gemini API error " + errResp.statusCode() + ": " + errResp.body());
+            if (lastErrorResponse != null) {
+                log.error("All Gemini models failed. Last status: {}, body: {}", lastErrorResponse.statusCode(), lastErrorResponse.body());
+                throw new RuntimeException("Gemini API error " + lastErrorResponse.statusCode() + ": " + lastErrorResponse.body());
             }
 
-            throw new RuntimeException("Gemini execution failed: " + (lastException != null ? lastException.getMessage() : "Unknown error"), lastException);
+            throw new RuntimeException("All Gemini models failed: " + (lastException != null ? lastException.getMessage() : "Unknown error"), lastException);
 
         } catch (RuntimeException re) {
             log.warn("Gemini execution failed: {}", re.getMessage());
@@ -183,61 +180,49 @@ public class GeminiAIProvider implements AIProvider {
     }
 
     /**
-     * Queries Google's ModelService.ListModels endpoint to fetch all active models supporting generateContent
-     * for this specific API key. Prevents 404 errors caused by deprecated model strings.
+     * Builds an ordered list of candidate models:
+     * 1. Explicit user request (if not "auto")
+     * 2. Live models fetched from ListModels API for this key
+     * 3. Comprehensive standard fallback models
      */
-    private String resolveActiveModel(String requestedModel, String apiKey) {
-        String cleanRequested = (requestedModel != null && !requestedModel.isBlank())
-                ? (requestedModel.startsWith("models/") ? requestedModel.substring(7).trim() : requestedModel.trim())
-                : null;
+    private List<String> buildCandidateModelList(String requestedModel, String apiKey) {
+        List<String> list = new ArrayList<>();
 
+        if (requestedModel != null && !requestedModel.isBlank()
+                && !requestedModel.equalsIgnoreCase("auto")
+                && !requestedModel.equalsIgnoreCase("default")) {
+            String clean = requestedModel.startsWith("models/") ? requestedModel.substring(7).trim() : requestedModel.trim();
+            list.add(clean);
+        }
+
+        // Live active models from Google API
         List<String> activeModels = getActiveContentModels(apiKey);
-
-        if (!activeModels.isEmpty()) {
-            // 1. If requested model is found in active models, use it directly
-            if (cleanRequested != null) {
-                for (String m : activeModels) {
-                    if (m.equalsIgnoreCase(cleanRequested)) {
-                        return m;
-                    }
-                }
+        for (String m : activeModels) {
+            if (!list.contains(m)) {
+                list.add(m);
             }
-
-            // 2. Select preferred modern active model
-            String[] preferredOrder = {
-                    "gemini-2.5-flash",
-                    "gemini-2.0-flash",
-                    "gemini-1.5-flash-latest",
-                    "gemini-1.5-flash",
-                    "gemini-2.5-pro",
-                    "gemini-1.5-pro"
-            };
-
-            for (String pref : preferredOrder) {
-                for (String m : activeModels) {
-                    if (m.equalsIgnoreCase(pref)) {
-                        return m;
-                    }
-                }
-            }
-
-            // 3. Fallback to any model containing "flash"
-            for (String m : activeModels) {
-                if (m.toLowerCase().contains("flash")) {
-                    return m;
-                }
-            }
-
-            // 4. Fallback to first available model
-            return activeModels.get(0);
         }
 
-        // If ListModels could not be retrieved, fall back to clean requested or default
-        if (cleanRequested != null && !cleanRequested.isBlank()) {
-            return cleanRequested;
+        // Comprehensive standard list of all Gemini models
+        String[] standards = {
+                "gemini-2.5-flash",
+                "gemini-2.0-flash",
+                "gemini-1.5-flash-latest",
+                "gemini-1.5-flash",
+                "gemini-2.5-pro",
+                "gemini-1.5-pro",
+                "gemini-2.0-flash-exp",
+                "gemini-exp-1206",
+                "gemini-pro"
+        };
+
+        for (String s : standards) {
+            if (!list.contains(s)) {
+                list.add(s);
+            }
         }
-        String configModel = config.getGemini().getModel();
-        return (configModel != null && !configModel.isBlank()) ? configModel : "gemini-2.5-flash";
+
+        return list;
     }
 
     private List<String> getActiveContentModels(String apiKey) {
@@ -281,16 +266,26 @@ public class GeminiAIProvider implements AIProvider {
                         }
                     }
                 }
-                log.info("Retrieved {} active Gemini content models from Google API for current key: {}", result.size(), result);
+                log.info("Discovered {} active Gemini content models from Google for this key: {}", result.size(), result);
                 modelCache.put(apiKey, new CachedModelList(result));
-            } else {
-                log.warn("Gemini ListModels returned status {}: {}", response.statusCode(), response.body());
             }
         } catch (Exception e) {
-            log.warn("Unable to query Gemini ModelService.ListModels: {}", e.getMessage());
+            log.warn("Could not retrieve live models list from Google: {}", e.getMessage());
         }
 
         return result;
+    }
+
+    private String summarizeError(String body) {
+        if (body == null || body.isBlank()) return "empty body";
+        try {
+            JsonNode root = objectMapper.readTree(body);
+            JsonNode msg = root.path("error").path("message");
+            if (!msg.isMissingNode()) {
+                return msg.asText();
+            }
+        } catch (Exception ignored) {}
+        return body.length() > 100 ? body.substring(0, 100) + "..." : body;
     }
 
     private String cleanMarkdownCodeBlocks(String text) {
@@ -307,9 +302,13 @@ public class GeminiAIProvider implements AIProvider {
         return trimmed.trim();
     }
 
+    public String getLastSuccessfulModel() {
+        return lastSuccessfulModel;
+    }
+
     @Override
     public String getProviderName() {
-        return "gemini (" + config.getGemini().getModel() + ")";
+        return "Google Gemini AI (" + lastSuccessfulModel + ")";
     }
 
     @Override
