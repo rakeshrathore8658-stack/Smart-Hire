@@ -135,10 +135,10 @@ public class AIProviderHealthService {
         boolean hasKey = key != null && !key.isBlank() && !key.contains("${");
         String configuredModel = aiConfig.getGemini().getModel();
         if (configuredModel == null || configuredModel.isBlank() || configuredModel.contains("3.8")) {
-            configuredModel = "gemini-1.5-flash";
+            configuredModel = "gemini-2.0-flash";
         }
 
-        List<String> models = List.of("gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash");
+        List<String> models = List.of("gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro");
 
         if (hasKey) {
             return AIProviderInfoDTO.builder()

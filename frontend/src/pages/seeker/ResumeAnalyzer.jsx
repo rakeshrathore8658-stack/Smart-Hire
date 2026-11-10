@@ -41,8 +41,8 @@ const ResumeAnalyzer = () => {
       name: 'Google Gemini AI',
       available: false,
       status: 'DEGRADED',
-      installedModels: ['gemini-1.5-flash', 'gemini-1.5-pro'],
-      recommendedModel: 'gemini-1.5-flash',
+      installedModels: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
+      recommendedModel: 'gemini-2.0-flash',
       description: 'Deep ATS reasoning, resume rewriting, and semantic analysis.',
     },
   ]);

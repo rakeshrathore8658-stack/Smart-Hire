@@ -63,13 +63,8 @@ public class GeminiAIProvider implements AIProvider {
         }
 
         try {
-            String url = "https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey;
-            URI uri = URI.create(url);
-
-            // Construct Gemini Request Body
-            Map<String, Object> requestPayload = new HashMap<>();
-
             // 1. System Instruction
+            Map<String, Object> requestPayload = new HashMap<>();
             if (systemInstruction != null && !systemInstruction.isBlank()) {
                 Map<String, Object> sysInstr = new HashMap<>();
                 List<Map<String, String>> sysParts = new ArrayList<>();
@@ -96,30 +91,77 @@ public class GeminiAIProvider implements AIProvider {
 
             String requestBodyJson = objectMapper.writeValueAsString(requestPayload);
 
-            HttpRequest request = HttpRequest.newBuilder()
-                    .uri(uri)
-                    .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(config.getGemini().getTimeoutSeconds()))
-                    .POST(HttpRequest.BodyPublishers.ofString(requestBodyJson))
-                    .build();
+            // Build list of candidate endpoints (v1 GA first, then v1beta, plus model fallback aliases if 404)
+            List<String> candidateUrls = new ArrayList<>();
+            candidateUrls.add("https://generativelanguage.googleapis.com/v1/models/" + model + ":generateContent?key=" + apiKey);
+            candidateUrls.add("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent?key=" + apiKey);
 
-            log.info("Sending resume analysis request to Gemini model: {}", model);
-            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
-
-            if (response.statusCode() == 200) {
-                JsonNode root = objectMapper.readTree(response.body());
-                JsonNode candidates = root.path("candidates");
-                if (candidates.isArray() && !candidates.isEmpty()) {
-                    JsonNode textNode = candidates.get(0).path("content").path("parts").get(0).path("text");
-                    String rawText = textNode.asText();
-                    return cleanMarkdownCodeBlocks(rawText);
-                }
-                throw new RuntimeException("Unexpected Gemini response structure: " + response.body());
-            } else {
-                log.warn("Gemini API error (Status {}): {}", response.statusCode(), response.body());
-                throw new RuntimeException("Gemini API error " + response.statusCode() + ": " + response.body());
+            if ("gemini-1.5-flash".equalsIgnoreCase(model)) {
+                candidateUrls.add("https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash:generateContent?key=" + apiKey);
+                candidateUrls.add("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=" + apiKey);
+                candidateUrls.add("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash-latest:generateContent?key=" + apiKey);
+                candidateUrls.add("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=" + apiKey);
+            } else if ("gemini-2.0-flash".equalsIgnoreCase(model)) {
+                candidateUrls.add("https://generativelanguage.googleapis.com/v1/models/gemini-1.5-flash:generateContent?key=" + apiKey);
+                candidateUrls.add("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey);
             }
 
+            HttpResponse<String> lastResponse = null;
+            Exception lastException = null;
+
+            for (String targetUrl : candidateUrls) {
+                try {
+                    URI uri = URI.create(targetUrl);
+                    HttpRequest request = HttpRequest.newBuilder()
+                            .uri(uri)
+                            .header("Content-Type", "application/json")
+                            .header("x-goog-api-key", apiKey)
+                            .timeout(Duration.ofSeconds(config.getGemini().getTimeoutSeconds()))
+                            .POST(HttpRequest.BodyPublishers.ofString(requestBodyJson))
+                            .build();
+
+                    log.info("Sending resume analysis request to Gemini URL: {}", targetUrl.replaceAll("key=[^&]+", "key=REDACTED"));
+                    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                    lastResponse = response;
+
+                    if (response.statusCode() == 200) {
+                        JsonNode root = objectMapper.readTree(response.body());
+                        JsonNode candidates = root.path("candidates");
+                        if (candidates.isArray() && !candidates.isEmpty()) {
+                            JsonNode textNode = candidates.get(0).path("content").path("parts").get(0).path("text");
+                            String rawText = textNode.asText();
+                            return cleanMarkdownCodeBlocks(rawText);
+                        }
+                        throw new RuntimeException("Unexpected Gemini response structure: " + response.body());
+                    } else if (response.statusCode() == 404) {
+                        log.warn("Gemini endpoint 404 (not found) for {}. Trying fallback endpoint...", targetUrl.replaceAll("key=[^&]+", "key=REDACTED"));
+                        // Continue to try the next candidate endpoint/model
+                        continue;
+                    } else {
+                        // Other error (400, 401, 403, 429) -> report immediately
+                        log.warn("Gemini API error (Status {}): {}", response.statusCode(), response.body());
+                        throw new RuntimeException("Gemini API error " + response.statusCode() + ": " + response.body());
+                    }
+                } catch (RuntimeException re) {
+                    if (re.getMessage() != null && re.getMessage().contains("Gemini API error")) {
+                        throw re;
+                    }
+                    lastException = re;
+                } catch (Exception e) {
+                    lastException = e;
+                }
+            }
+
+            if (lastResponse != null) {
+                log.warn("All candidate Gemini endpoints failed. Last response (Status {}): {}", lastResponse.statusCode(), lastResponse.body());
+                throw new RuntimeException("Gemini API error " + lastResponse.statusCode() + ": " + lastResponse.body());
+            }
+
+            throw new RuntimeException("Gemini execution failed: " + (lastException != null ? lastException.getMessage() : "Unknown error"), lastException);
+
+        } catch (RuntimeException re) {
+            log.warn("Gemini execution failed: {}", re.getMessage());
+            throw re;
         } catch (Exception e) {
             log.warn("Gemini execution failed: {}", e.getMessage());
             throw new RuntimeException("Gemini execution failed: " + e.getMessage(), e);
