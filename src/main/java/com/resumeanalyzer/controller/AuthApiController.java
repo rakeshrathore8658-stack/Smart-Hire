@@ -88,13 +88,21 @@ public class AuthApiController {
         }
     }
 
-    @PostMapping("/login")
+    @RequestMapping(value = "/login", method = {RequestMethod.POST, RequestMethod.OPTIONS})
     public ResponseEntity<?> login(
-            @RequestBody Map<String, String> body,
+            @RequestBody(required = false) Map<String, String> body,
             HttpServletRequest request,
             HttpServletResponse response,
             HttpSession session
     ) {
+        // Handle preflight OPTIONS smoothly
+        if ("OPTIONS".equalsIgnoreCase(request.getMethod())) {
+            return ResponseEntity.ok().build();
+        }
+
+        if (body == null) {
+            body = Collections.emptyMap();
+        }
         String email = body.get("email") != null ? body.get("email").trim().toLowerCase() : "";
         if (email.isBlank() && body.get("username") != null) {
             email = body.get("username").trim().toLowerCase();

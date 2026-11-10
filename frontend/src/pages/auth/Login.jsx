@@ -38,9 +38,15 @@ const Login = () => {
         navigate('/dashboard');
       }
     } catch (err) {
-      setErrorMessage(
-        err.response?.data?.message || err.message || 'Incorrect email or password entered. Please try again.'
-      );
+      if (err.response?.status === 405) {
+        setErrorMessage(
+          'Backend connection error (405 Method Not Allowed). If deployed on Vercel, please set VITE_API_BASE_URL to your Render backend URL in Vercel Project Settings and redeploy. If running locally, please ensure Spring Boot is running on port 8080.'
+        );
+      } else {
+        setErrorMessage(
+          err.response?.data?.message || err.message || 'Incorrect email or password entered. Please try again.'
+        );
+      }
     } finally {
       setLoading(false);
     }
