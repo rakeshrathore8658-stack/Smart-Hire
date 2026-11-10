@@ -51,6 +51,10 @@ public class AuthService {
                 : ("HR".equalsIgnoreCase(assignedRole) ? "HR / Recruiter" : "General"));
         user.setCompanyName(request.getCompanyName() != null ? request.getCompanyName().trim() : null);
         user.setTermsAccepted(true);
+        user.setTourCompleted(false);
+        user.setTourSkipped(false);
+        user.setTourSeen(false);
+        user.setTourLastStep(0);
 
         return userRepository.save(user);
     }

@@ -30,15 +30,15 @@ public class Resume {
     private Long fileSize;
 
     @Lob
-    @Column(name = "original_text", columnDefinition = "LONGTEXT")
+    @Column(name = "original_text", columnDefinition = "TEXT")
     private String originalText;
 
     @Lob
-    @Column(name = "normalized_text", columnDefinition = "LONGTEXT")
+    @Column(name = "normalized_text", columnDefinition = "TEXT")
     private String normalizedText;
 
     @Lob
-    @Column(name = "structured_json", columnDefinition = "LONGTEXT")
+    @Column(name = "structured_json", columnDefinition = "TEXT")
     private String structuredJson;
 
     @Column(name = "candidate_name", length = 150)

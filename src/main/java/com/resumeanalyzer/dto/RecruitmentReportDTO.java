@@ -40,4 +40,5 @@ public class RecruitmentReportDTO {
     // Breakdown tables & lists
     private List<RequisitionSummaryDTO> requisitionSummaries;
     private List<RequisitionSummaryDTO> applicantsByVacancy;
+    private List<DomainDistributionDTO> domainDistribution;
 }

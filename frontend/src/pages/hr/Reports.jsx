@@ -5,25 +5,26 @@ import api from '../../api/client';
 export default function Reports() {
   const [period, setPeriod] = useState('30days');
   const [report, setReport] = useState({
-    totalResumesScreened: 34,
-    newResumesThisMonth: 12,
-    shortlistConversionRate: 26.5,
-    shortlistedCount: 9,
-    interviewToOfferRate: 50.0,
-    offersCount: 3,
-    interviewsCount: 6,
-    avgTimeToHireDays: 18,
-    timeToHireSubtext: '4 days faster than industry average',
-    funnelApplied: 34,
-    funnelAppliedPct: 100,
-    funnel70Plus: 21,
-    funnel70PlusPct: 61.8,
-    funnelShortlisted: 9,
-    funnelShortlistedPct: 26.5,
-    funnelInterviews: 6,
-    funnelInterviewsPct: 17.6,
-    funnelOffers: 3,
-    funnelOffersPct: 8.8,
+    totalResumesScreened: 0,
+    newResumesThisMonth: 0,
+    shortlistConversionRate: 0.0,
+    shortlistedCount: 0,
+    interviewToOfferRate: 0.0,
+    offersCount: 0,
+    interviewsCount: 0,
+    avgTimeToHireDays: 0,
+    timeToHireSubtext: 'Live metric based on active pipeline',
+    funnelApplied: 0,
+    funnelAppliedPct: 0.0,
+    funnel70Plus: 0,
+    funnel70PlusPct: 0.0,
+    funnelShortlisted: 0,
+    funnelShortlistedPct: 0.0,
+    funnelInterviews: 0,
+    funnelInterviewsPct: 0.0,
+    funnelOffers: 0,
+    funnelOffersPct: 0.0,
+    domainDistribution: [],
   });
   const [loading, setLoading] = useState(true);
 
@@ -44,14 +45,22 @@ export default function Reports() {
   }, [period]);
 
   const handleExportCSV = () => {
-    const csvContent =
+    let csvContent =
       'data:text/csv;charset=utf-8,' +
       'Metric,Value\n' +
       `Total Resumes Screened,${report.totalResumesScreened}\n` +
       `AI Shortlist Conversion,${report.shortlistConversionRate}%\n` +
       `Interview to Offer Rate,${report.interviewToOfferRate}%\n` +
       `Average Time to Hire,${report.avgTimeToHireDays} Days\n` +
-      `Offers Extended,${report.offersCount}\n`;
+      `Offers Extended,${report.offersCount}\n\n` +
+      'Domain,Candidates,Percentage\n';
+
+    if (report.domainDistribution && report.domainDistribution.length > 0) {
+      report.domainDistribution.forEach((d) => {
+        csvContent += `"${d.domainName}",${d.candidatesCount},${d.percentage}%\n`;
+      });
+    }
+
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
@@ -252,7 +261,7 @@ export default function Reports() {
           </div>
         </article>
 
-        {/* Applicant Distribution by Requisition */}
+        {/* Applicant Distribution by Domain */}
         <article className="card">
           <div className="card-header">
             <div>
@@ -262,45 +271,27 @@ export default function Reports() {
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', marginBottom: '4px' }}>
-                <span>Engineering & Software</span>
-                <strong>18 Candidates (52%)</strong>
+            {report.domainDistribution && report.domainDistribution.length > 0 ? (
+              report.domainDistribution.map((item, idx) => (
+                <div key={item.domainName || idx}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', marginBottom: '4px' }}>
+                    <span>{item.domainName}</span>
+                    <strong>{item.candidatesCount} Candidates ({item.percentage}%)</strong>
+                  </div>
+                  <div className="progress">
+                    <div
+                      className={`progress-bar ${item.barClass || ''}`}
+                      style={{ width: `${Math.min(100, Math.max(0, item.percentage))}%` }}
+                    ></div>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div style={{ textAlign: 'center', padding: '24px 12px', color: 'var(--text-muted)' }}>
+                <i className="bi bi-pie-chart" style={{ fontSize: '2rem', display: 'block', marginBottom: '8px', opacity: 0.5 }}></i>
+                <p style={{ margin: 0, fontSize: '0.9rem' }}>No applicant data recorded for this period.</p>
               </div>
-              <div className="progress">
-                <div className="progress-bar" style={{ width: '52%' }}></div>
-              </div>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', marginBottom: '4px' }}>
-                <span>Data Science & AI</span>
-                <strong>8 Candidates (24%)</strong>
-              </div>
-              <div className="progress">
-                <div className="progress-bar progress-bar-info" style={{ width: '24%' }}></div>
-              </div>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', marginBottom: '4px' }}>
-                <span>Cloud & DevOps Infrastructure</span>
-                <strong>5 Candidates (15%)</strong>
-              </div>
-              <div className="progress">
-                <div className="progress-bar progress-bar-warning" style={{ width: '15%' }}></div>
-              </div>
-            </div>
-
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.84rem', marginBottom: '4px' }}>
-                <span>Product Management & UI/UX</span>
-                <strong>3 Candidates (9%)</strong>
-              </div>
-              <div className="progress">
-                <div className="progress-bar progress-bar-success" style={{ width: '9%' }}></div>
-              </div>
-            </div>
+            )}
           </div>
         </article>
       </div>

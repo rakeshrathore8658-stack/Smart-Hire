@@ -65,7 +65,7 @@ export default function TourTooltip() {
           calculatedTop = Math.max(margin, targetRect.top - tooltipHeight - gap);
           desiredPlacement = 'top';
         }
-        calculatedLeft = margin;
+        calculatedLeft = Math.max(margin, Math.round((vw - tooltipWidth) / 2));
       } else {
         // Desktop / Tablet positioning
         if (desiredPlacement === 'bottom') {

@@ -1,5 +1,6 @@
 package com.resumeanalyzer.service;
 
+import com.resumeanalyzer.dto.DomainDistributionDTO;
 import com.resumeanalyzer.dto.RecruitmentReportDTO;
 import com.resumeanalyzer.dto.RequisitionSummaryDTO;
 import com.resumeanalyzer.entity.Job;
@@ -10,8 +11,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.ArrayList;
-import java.util.List;
+import java.util.*;
 
 @Service
 public class ReportService {
@@ -194,6 +194,48 @@ public class ReportService {
 
         double appliedBase = Math.max(1, funnelApplied);
 
+        // Dynamic Applicant Distribution by Domain strictly from database
+        Map<String, Integer> domainCounts = new LinkedHashMap<>();
+        domainCounts.put("Engineering & Software", 0);
+        domainCounts.put("Data Science & AI", 0);
+        domainCounts.put("Cloud & DevOps Infrastructure", 0);
+        domainCounts.put("Product Management & UI/UX", 0);
+
+        // Also include any custom departments configured in existing jobs
+        for (Job j : allJobs) {
+            String dept = j.getDepartment();
+            if (dept != null && !dept.isBlank()) {
+                String normalizedDept = normalizeDepartmentName(dept);
+                domainCounts.putIfAbsent(normalizedDept, 0);
+            }
+        }
+
+        // Categorize each applicant record in the selected period to its domain
+        for (ResumeAnalysis ra : periodAnalyses) {
+            String role = ra.getTargetJobRole();
+            String matchedDomain = resolveDomainForRole(role, allJobs);
+            domainCounts.put(matchedDomain, domainCounts.getOrDefault(matchedDomain, 0) + 1);
+        }
+
+        String[] domainColors = {"", "progress-bar-info", "progress-bar-warning", "progress-bar-success"};
+        List<DomainDistributionDTO> domainDistribution = new ArrayList<>();
+        int colorIdx = 0;
+
+        for (Map.Entry<String, Integer> entry : domainCounts.entrySet()) {
+            int count = entry.getValue();
+            double pct = totalResumesScreened > 0
+                    ? Math.round((count * 1000.0) / totalResumesScreened) / 10.0
+                    : 0.0;
+
+            domainDistribution.add(DomainDistributionDTO.builder()
+                    .domainName(entry.getKey())
+                    .candidatesCount(count)
+                    .percentage(pct)
+                    .barClass(domainColors[colorIdx % domainColors.length])
+                    .build());
+            colorIdx++;
+        }
+
         return RecruitmentReportDTO.builder()
                 .totalResumesScreened(totalResumesScreened)
                 .newResumesThisMonth(newThisMonth)
@@ -221,7 +263,56 @@ public class ReportService {
                 // Data tables
                 .requisitionSummaries(requisitionSummaries)
                 .applicantsByVacancy(vacancyList)
+                .domainDistribution(domainDistribution)
                 .build();
+    }
+
+    public static String resolveDomainForRole(String role, List<Job> allJobs) {
+        if (role == null || role.isBlank()) {
+            return "Engineering & Software";
+        }
+        String r = role.toLowerCase().trim();
+
+        // 1. Check matching job department first
+        if (allJobs != null) {
+            for (Job job : allJobs) {
+                if (isJobMatching(job.getTitle(), role)) {
+                    return normalizeDepartmentName(job.getDepartment());
+                }
+            }
+        }
+
+        // 2. Keyword heuristic fallback
+        if (r.contains("data") || r.contains("ai") || r.contains("nlp") || r.contains("machine learning") || r.contains("ml") || r.contains("analytics")) {
+            return "Data Science & AI";
+        }
+        if (r.contains("cloud") || r.contains("devops") || r.contains("infra") || r.contains("aws") || r.contains("azure") || r.contains("docker") || r.contains("kubernetes") || r.contains("sre") || r.contains("security")) {
+            return "Cloud & DevOps Infrastructure";
+        }
+        if (r.contains("product") || r.contains("ui") || r.contains("ux") || r.contains("design") || r.contains("qa") || r.contains("test") || r.contains("scrum") || r.contains("agile")) {
+            return "Product Management & UI/UX";
+        }
+        return "Engineering & Software";
+    }
+
+    public static String normalizeDepartmentName(String department) {
+        if (department == null || department.isBlank()) {
+            return "Engineering & Software";
+        }
+        String d = department.trim().toLowerCase();
+        if (d.contains("data") || d.contains("ai") || d.contains("analytics")) {
+            return "Data Science & AI";
+        }
+        if (d.contains("infra") || d.contains("cloud") || d.contains("devops") || d.contains("network") || d.contains("security")) {
+            return "Cloud & DevOps Infrastructure";
+        }
+        if (d.contains("product") || d.contains("ui") || d.contains("ux") || d.contains("design") || d.contains("qa") || d.contains("quality")) {
+            return "Product Management & UI/UX";
+        }
+        if (d.contains("eng") || d.contains("soft") || d.contains("tech") || d.contains("dev")) {
+            return "Engineering & Software";
+        }
+        return department.trim();
     }
 
     private LocalDateTime resolvePeriodCutoff(String period) {

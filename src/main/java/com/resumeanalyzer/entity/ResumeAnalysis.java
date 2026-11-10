@@ -58,7 +58,7 @@ public class ResumeAnalysis {
     private String targetJobRole;
 
     @Lob
-    @Column(name = "job_description", columnDefinition = "LONGTEXT")
+    @Column(name = "job_description", columnDefinition = "TEXT")
     private String jobDescription;
 
     @Column(name = "overall_score")
@@ -94,7 +94,7 @@ public class ResumeAnalysis {
     private Integer contentQualityScore = 0;
 
     @Lob
-    @Column(name = "analysis_json", columnDefinition = "LONGTEXT")
+    @Column(name = "analysis_json", columnDefinition = "TEXT")
     private String analysisJson;
 
     @Column(name = "ai_provider", length = 50)

@@ -273,6 +273,9 @@ export const OnboardingProvider = ({ children }) => {
     return user?.email ? `smarthire_tour_${user.email.toLowerCase()}` : 'smarthire_tour_guest';
   }, [user]);
 
+  // Track user email prompted in the current session
+  const hasCheckedUserRef = useRef(null);
+
   // Synchronize preferences to backend and localStorage
   const savePreferences = useCallback(
     async (completed, skipped, seen = true, lastStep = 0) => {
@@ -309,9 +312,18 @@ export const OnboardingProvider = ({ children }) => {
   );
 
   // Fetch preferences from backend & fallback to localStorage
-  // Requirement: ONLY show guide once on first-time login. Never show on 2nd login.
+  // Requirement: ONLY show guide once on first-time login on dashboard. Never show on 2nd login.
   useEffect(() => {
-    if (!isAuthenticated || !user) return;
+    // 1. Must be authenticated with a valid user
+    if (!isAuthenticated || !user || !user.email) return;
+
+    // 2. ONLY run check when user is physically inside the dashboard
+    if (!location.pathname.startsWith('/dashboard')) return;
+
+    const userEmailKey = user.email.trim().toLowerCase();
+
+    // 3. Avoid duplicate prompting during navigation between dashboard sub-pages in same session
+    if (hasCheckedUserRef.current === userEmailKey) return;
 
     let isMounted = true;
 
@@ -338,7 +350,7 @@ export const OnboardingProvider = ({ children }) => {
         if (user.tourSeen !== undefined) seen = seen || !!user.tourSeen;
       }
 
-      // 3. Fetch authoritative state from backend API
+      // 3. Fetch authoritative state from backend API (Neon PostgreSQL)
       try {
         const res = await api.get('/user/onboarding');
         if (res.data && res.data.success) {
@@ -355,19 +367,19 @@ export const OnboardingProvider = ({ children }) => {
       setTourCompleted(completed);
       setTourSkipped(skipped);
       setTourSeen(seen);
+      hasCheckedUserRef.current = userEmailKey;
 
       // ONLY show for brand new users on their very first login.
       // If user has seen it, completed it, or skipped it, NEVER auto-show again on 2nd login!
       const isFirstTimeUser = !completed && !skipped && !seen;
 
       if (isFirstTimeUser && !isActive) {
+        // Allow dashboard layout and components 600ms to mount comfortably
         const timer = setTimeout(() => {
           if (isMounted) {
             setShowWelcomeModal(true);
-            // Mark as seen immediately so 2nd login won't auto-open it
-            savePreferences(false, false, true, 0);
           }
-        }, 1000);
+        }, 600);
         return () => clearTimeout(timer);
       }
     };
@@ -377,19 +389,28 @@ export const OnboardingProvider = ({ children }) => {
     return () => {
       isMounted = false;
     };
-  }, [isAuthenticated, user, getStorageKey, savePreferences, isActive]);
+  }, [isAuthenticated, user, location.pathname, getStorageKey, isActive]);
 
   // Helper to determine if an element is currently visible and on-screen
   const isElementVisibleOnScreen = (el) => {
     if (!el) return false;
+    // Check if element is inside mobile sidebar drawer when the drawer is closed
+    const sidebar = el.closest('#dashboardSidebar');
+    if (sidebar && window.innerWidth <= 900 && !sidebar.classList.contains('is-open')) {
+      return false;
+    }
     const style = window.getComputedStyle(el);
     if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
       return false;
     }
     const rect = el.getBoundingClientRect();
     if (rect.width <= 0 || rect.height <= 0) return false;
-    // Off-screen horizontally check (e.g. hidden mobile sidebar)
-    if (rect.right <= 12 || rect.left >= window.innerWidth - 12) return false;
+    // Off-screen horizontally or vertically
+    if (rect.right <= 10 || rect.bottom <= 10 || rect.left >= window.innerWidth - 10 || rect.top >= window.innerHeight - 10) {
+      return false;
+    }
+    // Offscreen to the left (e.g. collapsed or offscreen drawer)
+    if (rect.left < 0 && rect.right < 50) return false;
     return true;
   };
 
@@ -615,7 +636,9 @@ export const OnboardingProvider = ({ children }) => {
     setShowCompletionModal(false);
     setCurrentStepIndex(stepIdx);
     setIsActive(true);
-  }, []);
+    // Mark as seen immediately so 2nd login will not auto-open the welcome modal
+    savePreferences(false, false, true, stepIdx);
+  }, [savePreferences]);
 
   const nextStep = useCallback(() => {
     if (currentStepIndex < steps.length - 1) {
@@ -643,8 +666,9 @@ export const OnboardingProvider = ({ children }) => {
 
   const dismissWelcome = useCallback(() => {
     setShowWelcomeModal(false);
-    savePreferences(tourCompleted, tourSkipped, true, currentStepIndex);
-  }, [savePreferences, tourCompleted, tourSkipped, currentStepIndex]);
+    // Mark as seen so 2nd login will not auto-open
+    savePreferences(false, false, true, 0);
+  }, [savePreferences]);
 
   const skipTour = useCallback(() => {
     setIsActive(false);
@@ -676,6 +700,7 @@ export const OnboardingProvider = ({ children }) => {
     setTourSkipped(false);
     setTourSeen(false);
     clearTourHighlights();
+    hasCheckedUserRef.current = null; // allow re-prompting on next visit
     try {
       localStorage.removeItem(getStorageKey());
       await api.post('/user/onboarding/reset');
@@ -687,7 +712,9 @@ export const OnboardingProvider = ({ children }) => {
     setShowWelcomeModal(false);
     setShowCompletionModal(false);
     clearTourHighlights();
-  }, [clearTourHighlights]);
+    // Ensure closing via tooltip X also saves seen so 2nd login doesn't auto-open
+    savePreferences(tourCompleted, true, true, currentStepIndex);
+  }, [clearTourHighlights, savePreferences, tourCompleted, currentStepIndex]);
 
   return (
     <OnboardingContext.Provider

@@ -37,6 +37,11 @@ export default function SpotlightOverlay() {
   const vw = typeof window !== 'undefined' ? window.innerWidth : 1200;
   const vh = typeof window !== 'undefined' ? window.innerHeight : 800;
 
+  const isMobile = vw <= 900;
+  const isSidebarOpenOnMobile =
+    typeof document !== 'undefined' &&
+    document.getElementById('dashboardSidebar')?.classList.contains('is-open');
+
   const hasTarget =
     Boolean(targetRect) &&
     targetRect.width > 10 &&
@@ -52,12 +57,15 @@ export default function SpotlightOverlay() {
   const rx = 12;
 
   // Sidebar / Slider bar navigation item cutout coordinates
+  // Hide completely on mobile/tablet screens unless the sidebar mobile drawer is explicitly open
   const hasSidebarTarget =
     Boolean(sidebarRect) &&
+    (!isMobile || isSidebarOpenOnMobile) &&
     sidebarRect.width > 10 &&
     sidebarRect.height > 10 &&
-    sidebarRect.right > 15 &&
-    sidebarRect.left < vw - 15;
+    sidebarRect.left >= 0 &&
+    sidebarRect.right > 25 &&
+    sidebarRect.left < vw - 25;
 
   const sidebarX = hasSidebarTarget ? Math.max(4, sidebarRect.left) : 0;
   const sidebarY = hasSidebarTarget ? Math.max(4, sidebarRect.top) : 0;
@@ -110,6 +118,7 @@ export default function SpotlightOverlay() {
 
           {/* Masked Translucent Overlay */}
           <rect
+            className="smarthire-spotlight-mask-rect"
             x="0"
             y="0"
             width="100%"

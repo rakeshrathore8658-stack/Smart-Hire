@@ -25,14 +25,27 @@ export class NotificationSocket {
   connect() {
     this.isClosedManually = false;
 
-    // Use current host or localhost:8080
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host =
-      window.location.port === '5173' || window.location.port === '3000'
-        ? 'localhost:8080'
-        : window.location.host;
+    let url;
+    const rawApiUrl = import.meta.env.VITE_API_BASE_URL;
 
-    const url = `${protocol}//${host}/ws-raw`;
+    if (rawApiUrl && rawApiUrl.trim()) {
+      try {
+        const parsed = new URL(rawApiUrl.trim());
+        const wsProto = parsed.protocol === 'https:' ? 'wss:' : 'ws:';
+        url = `${wsProto}//${parsed.host}/ws-raw`;
+      } catch (_) {
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        url = `${protocol}//${window.location.host}/ws-raw`;
+      }
+    } else {
+      // Use current host or localhost:8080 in local dev
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host =
+        window.location.port === '5173' || window.location.port === '3000'
+          ? 'localhost:8080'
+          : window.location.host;
+      url = `${protocol}//${host}/ws-raw`;
+    }
 
     try {
       this.ws = new WebSocket(url);

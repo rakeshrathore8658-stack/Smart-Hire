@@ -41,7 +41,10 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler({ResourceNotFoundException.class, NoResourceFoundException.class, NoHandlerFoundException.class})
     public Object handleNotFound(Exception ex, HttpServletRequest request, HttpServletResponse response) {
-        log.warn("Resource not found: {} for URI: {}", ex.getMessage(), request.getRequestURI());
+        if (request != null && "/favicon.ico".equals(request.getRequestURI())) {
+            return ResponseEntity.noContent().build();
+        }
+        log.warn("Resource not found: {} for URI: {}", ex.getMessage(), request != null ? request.getRequestURI() : "/");
         HttpStatus status = HttpStatus.NOT_FOUND;
 
         if (isApiRequest(request)) {
@@ -367,35 +370,22 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * Helper to construct a rich, styled ModelAndView for browser error pages.
+     * Helper to construct a clean JSON ErrorResponse for browser & client requests.
      */
-    private ModelAndView createErrorView(HttpServletRequest request, HttpServletResponse response,
-                                        HttpStatus status, String title, String message, Exception ex) {
+    private ResponseEntity<ErrorResponse> createErrorView(HttpServletRequest request, HttpServletResponse response,
+                                                         HttpStatus status, String title, String message, Exception ex) {
         if (response != null) {
             response.setStatus(status.value());
         }
 
-        ModelAndView mav = new ModelAndView("error");
-        mav.setStatus(status);
-        mav.addObject("statusCode", status.value());
-        mav.addObject("errorStatus", status.getReasonPhrase());
-        mav.addObject("errorTitle", title);
-        mav.addObject("errorMessage", message);
-        mav.addObject("errorPath", request != null ? request.getRequestURI() : "/");
-        mav.addObject("timestamp", LocalDateTime.now().format(TIMESTAMP_FORMATTER));
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .timestamp(LocalDateTime.now())
+                .status(status.value())
+                .error(status.getReasonPhrase())
+                .message(message != null ? message : title)
+                .path(request != null ? request.getRequestURI() : "/")
+                .build();
 
-        // Inject current user context if logged in
-        try {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.isAuthenticated() && !"anonymousUser".equals(auth.getPrincipal())) {
-                mav.addObject("userName", auth.getName());
-                boolean isHr = auth.getAuthorities().stream()
-                        .anyMatch(a -> a.getAuthority().contains("HR") || a.getAuthority().contains("RECRUITER"));
-                mav.addObject("userRole", isHr ? "HR" : "USER");
-            }
-        } catch (Exception ignored) {
-        }
-
-        return mav;
+        return ResponseEntity.status(status).body(errorResponse);
     }
 }

@@ -30,11 +30,11 @@ export default function TourCompletionModal() {
         </div>
 
         {/* Title & Description */}
-        <h2 id="tour-completion-title" style={{ fontSize: '1.5rem', fontWeight: 800, color: '#172B45', margin: '0 0 10px' }}>
+        <h2 id="tour-completion-title" className="smarthire-completion-title">
           {!isHr ? "You're All Set!" : 'Your Recruiter Workspace is Ready!'}
         </h2>
 
-        <p style={{ fontSize: '0.92rem', color: '#64748B', lineHeight: 1.6, margin: '0 auto 26px', maxWidth: '420px' }}>
+        <p className="smarthire-completion-description">
           {!isHr
             ? 'You now know how to upload your resume, perform AI analysis, and understand your ATS score.'
             : "Explore SmartHire's recruitment management and AI-powered candidate evaluation features."}
