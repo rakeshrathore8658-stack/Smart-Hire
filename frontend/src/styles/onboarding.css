@@ -1,0 +1,663 @@
+/**
+ * SmartHire Enterprise Spotlight Navigator & Onboarding Styles
+ * Strict brand theme: SmartHire Orange (#FF7900), Navy Blue (#172B45 / #203B60),
+ * Pure White (#FFFFFF), and Soft Light Grey (#F8FAFC / #E2E8F0).
+ */
+
+/* ----------------- FULLSCREEN SPOTLIGHT OVERLAY ----------------- */
+.smarthire-spotlight-backdrop {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 99990;
+  pointer-events: auto;
+  transition: opacity 0.3s ease;
+}
+
+.smarthire-spotlight-svg {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Smooth transition for the cutout rectangle */
+.smarthire-spotlight-cutout {
+  transition: x 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              y 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              width 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              height 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* ----------------- ANIMATED SPOTLIGHT HIGHLIGHT RING ----------------- */
+.smarthire-spotlight-ring {
+  position: fixed;
+  border-radius: 12px;
+  border: 2px solid #FF7900;
+  box-shadow: 0 0 0 3px rgba(255, 121, 0, 0.28), 0 0 25px rgba(255, 121, 0, 0.45);
+  pointer-events: none;
+  z-index: 99992;
+  transition: top 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              left 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              width 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              height 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              border-radius 0.3s ease;
+  animation: smarthireRingPulse 2.4s infinite ease-in-out;
+}
+
+@keyframes smarthireRingPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(255, 121, 0, 0.28), 0 0 20px rgba(255, 121, 0, 0.4);
+    border-color: #FF7900;
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 121, 0, 0.45), 0 0 32px rgba(255, 121, 0, 0.65);
+    border-color: #FFA044;
+  }
+}
+
+/* Sidebar Nav Item Spotlight Highlight Ring */
+.smarthire-sidebar-highlight-ring {
+  position: fixed;
+  border-radius: 10px;
+  border: 2px solid #FF7900;
+  box-shadow: 0 0 0 3px rgba(255, 121, 0, 0.35), 0 0 22px rgba(255, 121, 0, 0.6);
+  pointer-events: none;
+  z-index: 99993;
+  transition: all 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+  animation: smarthireSidebarPulse 2s infinite ease-in-out;
+}
+
+@keyframes smarthireSidebarPulse {
+  0%, 100% {
+    box-shadow: 0 0 0 3px rgba(255, 121, 0, 0.35), 0 0 16px rgba(255, 121, 0, 0.45);
+    border-color: #FF7900;
+  }
+  50% {
+    box-shadow: 0 0 0 6px rgba(255, 121, 0, 0.55), 0 0 28px rgba(255, 121, 0, 0.75);
+    border-color: #FFA044;
+  }
+}
+
+.smarthire-sidebar-pulse-dot {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #FF7900;
+  box-shadow: 0 0 8px #FF7900;
+  animation: smarthireDotPulse 1.4s infinite;
+}
+
+@keyframes smarthireDotPulse {
+  0%, 100% { transform: scale(0.9); opacity: 0.9; }
+  50% { transform: scale(1.3); opacity: 1; }
+}
+
+/* Active Sidebar Link Highlight During Tour */
+.sidebar-link.tour-active-nav {
+  color: #FF7900 !important;
+  background: rgba(255, 121, 0, 0.16) !important;
+  font-weight: 800 !important;
+  position: relative;
+  z-index: 99994;
+}
+
+.sidebar-link.tour-active-nav .sidebar-icon {
+  color: #FF7900 !important;
+  transform: scale(1.15);
+  transition: transform 0.25s ease;
+}
+
+/* ----------------- PROFESSIONAL TOOLTIP CARD ----------------- */
+.smarthire-tour-tooltip {
+  position: fixed;
+  width: 380px;
+  max-width: calc(100vw - 32px);
+  background: #FFFFFF;
+  border: 1px solid #E2E8F0;
+  border-radius: 16px;
+  box-shadow: 0 20px 45px -10px rgba(15, 23, 42, 0.28), 0 0 0 1px rgba(15, 23, 42, 0.04);
+  padding: 22px 24px;
+  z-index: 99995;
+  transition: top 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              left 0.35s cubic-bezier(0.25, 1, 0.5, 1),
+              opacity 0.25s ease,
+              transform 0.25s ease;
+  animation: smarthireTooltipFadeIn 0.3s ease-out;
+  color: #172B45;
+}
+
+@keyframes smarthireTooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Tooltip Header */
+.smarthire-tour-header {
+  display: flex;
+  justifyContent: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.smarthire-tour-step-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #FF7900;
+  background: rgba(255, 121, 0, 0.1);
+  padding: 4px 10px;
+  border-radius: 20px;
+  border: 1px solid rgba(255, 121, 0, 0.25);
+}
+
+.smarthire-tour-close-btn {
+  background: transparent;
+  border: none;
+  color: #94A3B8;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+
+.smarthire-tour-close-btn:hover {
+  color: #172B45;
+  background: #F1F5F9;
+}
+
+/* Tooltip Body */
+.smarthire-tour-title {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: #172B45;
+  line-height: 1.35;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.smarthire-tour-title i {
+  color: #FF7900;
+}
+
+.smarthire-tour-description {
+  margin: 0 0 16px;
+  font-size: 0.88rem;
+  line-height: 1.6;
+  color: #64748B;
+}
+
+/* Animated Progress Indicator */
+.smarthire-tour-progress-track {
+  width: 100%;
+  height: 4px;
+  background: #EDF2F7;
+  border-radius: 4px;
+  overflow: hidden;
+  margin-bottom: 18px;
+}
+
+.smarthire-tour-progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #FF7900, #FFA044);
+  border-radius: 4px;
+  transition: width 0.35s cubic-bezier(0.25, 1, 0.5, 1);
+}
+
+/* Tooltip Footer Actions */
+.smarthire-tour-footer {
+  display: flex;
+  justifyContent: space-between;
+  align-items: center;
+  gap: 10px;
+  padding-top: 14px;
+  border-top: 1px solid #F1F5F9;
+}
+
+.smarthire-tour-skip-btn {
+  background: transparent;
+  border: none;
+  font-size: 0.82rem;
+  color: #94A3B8;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 4px;
+  transition: color 0.2s ease;
+}
+
+.smarthire-tour-skip-btn:hover {
+  color: #64748B;
+  text-decoration: underline;
+}
+
+.smarthire-tour-nav-btns {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.smarthire-tour-back-btn {
+  background: #F8FAFC;
+  border: 1px solid #CBD5E1;
+  color: #475569;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 7px 14px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.smarthire-tour-back-btn:hover:not(:disabled) {
+  background: #EDF2F7;
+  color: #172B45;
+}
+
+.smarthire-tour-back-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.smarthire-tour-next-btn {
+  background: #FF7900;
+  border: 1px solid #E96C00;
+  color: #FFFFFF;
+  font-size: 0.84rem;
+  font-weight: 700;
+  padding: 7px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  box-shadow: 0 2px 6px rgba(255, 121, 0, 0.3);
+  transition: all 0.2s ease;
+}
+
+.smarthire-tour-next-btn:hover {
+  background: #E96C00;
+  box-shadow: 0 4px 12px rgba(255, 121, 0, 0.4);
+  transform: translateY(-1px);
+}
+
+/* ----------------- WELCOME MODAL OVERLAY ----------------- */
+.smarthire-welcome-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+  animation: smarthireModalBackdropFade 0.25s ease-out;
+}
+
+@keyframes smarthireModalBackdropFade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.smarthire-welcome-modal {
+  max-width: 580px;
+  width: 100%;
+  background: #FFFFFF;
+  border-radius: 20px;
+  padding: 32px 36px;
+  box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.35);
+  border: 1px solid #E2E8F0;
+  animation: smarthireModalZoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes smarthireModalZoomIn {
+  from {
+    opacity: 0;
+    transform: scale(0.92) translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.smarthire-welcome-header {
+  text-align: center;
+  margin-bottom: 24px;
+}
+
+.smarthire-welcome-logo {
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: #172B45;
+  margin-bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.smarthire-welcome-logo .mark {
+  color: #FF7900;
+  letter-spacing: -2px;
+  font-weight: 900;
+  margin-right: 4px;
+}
+
+.smarthire-welcome-title {
+  font-size: 1.55rem;
+  font-weight: 800;
+  color: #172B45;
+  margin: 0 0 8px;
+}
+
+.smarthire-welcome-subtitle {
+  font-size: 0.94rem;
+  color: #64748B;
+  line-height: 1.55;
+  margin: 0 auto;
+  max-width: 440px;
+}
+
+.smarthire-welcome-features {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 28px;
+}
+
+.smarthire-welcome-feature-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  padding: 12px 16px;
+  background: #F8FAFC;
+  border: 1px solid #E2E8F0;
+  border-radius: 12px;
+  transition: all 0.2s ease;
+}
+
+.smarthire-welcome-feature-card:hover {
+  background: #FFFFFF;
+  border-color: #FF7900;
+  box-shadow: 0 4px 12px rgba(255, 121, 0, 0.08);
+}
+
+.smarthire-welcome-feature-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  background: rgba(255, 121, 0, 0.12);
+  color: #FF7900;
+  display: grid;
+  place-items: center;
+  font-size: 1.15rem;
+  flex-shrink: 0;
+}
+
+.smarthire-welcome-feature-content h5 {
+  margin: 0 0 3px;
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #172B45;
+}
+
+.smarthire-welcome-feature-content p {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #64748B;
+  line-height: 1.45;
+}
+
+.smarthire-welcome-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.smarthire-welcome-btn-primary {
+  width: 100%;
+  padding: 12px;
+  background: #FF7900;
+  color: #FFFFFF;
+  border: 1px solid #E96C00;
+  border-radius: 10px;
+  font-size: 0.96rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(255, 121, 0, 0.35);
+  transition: all 0.2s ease;
+}
+
+.smarthire-welcome-btn-primary:hover {
+  background: #E96C00;
+  box-shadow: 0 6px 18px rgba(255, 121, 0, 0.45);
+  transform: translateY(-1px);
+}
+
+.smarthire-welcome-actions-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.smarthire-welcome-btn-secondary {
+  flex: 1;
+  padding: 9px;
+  background: #F1F5F9;
+  color: #475569;
+  border: 1px solid #CBD5E1;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.smarthire-welcome-btn-secondary:hover {
+  background: #E2E8F0;
+  color: #172B45;
+}
+
+.smarthire-welcome-btn-skip {
+  flex: 1;
+  padding: 9px;
+  background: transparent;
+  color: #94A3B8;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-align: center;
+  transition: all 0.2s ease;
+}
+
+.smarthire-welcome-btn-skip:hover {
+  color: #64748B;
+  background: #F8FAFC;
+}
+
+/* ----------------- COMPLETION MODAL ----------------- */
+.smarthire-completion-modal {
+  max-width: 500px;
+  width: 100%;
+  background: #FFFFFF;
+  border-radius: 20px;
+  padding: 36px 32px;
+  text-align: center;
+  box-shadow: 0 25px 60px -15px rgba(15, 23, 42, 0.35);
+  border: 1px solid #E2E8F0;
+  animation: smarthireModalZoomIn 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.smarthire-completion-badge {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  background: rgba(16, 185, 129, 0.12);
+  color: #10B981;
+  display: grid;
+  place-items: center;
+  font-size: 2.2rem;
+  margin: 0 auto 18px;
+  animation: smarthireBadgePop 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+@keyframes smarthireBadgePop {
+  0% { transform: scale(0.6); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+/* Responsive Media Queries for Onboarding & Spotlight Navigator */
+@media (max-width: 600px) {
+  .smarthire-tour-tooltip {
+    width: calc(100vw - 20px) !important;
+    max-width: calc(100vw - 20px) !important;
+    left: 10px !important;
+    right: 10px !important;
+    box-sizing: border-box !important;
+    max-height: calc(100vh - 24px);
+    overflow-y: auto;
+    padding: 16px 16px;
+    border-radius: 14px;
+  }
+
+  .smarthire-spotlight-ring {
+    max-width: calc(100vw - 12px);
+  }
+
+  .smarthire-tour-title {
+    font-size: 1.02rem;
+  }
+
+  .smarthire-tour-description {
+    font-size: 0.82rem;
+    line-height: 1.45;
+    margin-bottom: 14px;
+  }
+
+  .smarthire-tour-actions {
+    margin-top: 14px;
+  }
+
+  .smarthire-tour-btn-next,
+  .smarthire-tour-btn-back {
+    padding: 7px 14px;
+    font-size: 0.82rem;
+  }
+
+  .smarthire-welcome-backdrop {
+    padding: 10px;
+  }
+
+  .smarthire-welcome-modal {
+    padding: 24px 18px;
+    border-radius: 16px;
+    max-height: 94vh;
+    overflow-y: auto;
+  }
+
+  .smarthire-welcome-title {
+    font-size: 1.3rem;
+  }
+
+  .smarthire-welcome-subtitle {
+    font-size: 0.84rem;
+  }
+
+  .smarthire-welcome-feature-card {
+    padding: 10px 12px;
+  }
+
+  .smarthire-welcome-feature-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+  }
+
+  .smarthire-welcome-feature-content h5 {
+    font-size: 0.86rem;
+  }
+
+  .smarthire-welcome-feature-content p {
+    font-size: 0.76rem;
+  }
+
+  .smarthire-completion-modal {
+    padding: 24px 18px;
+    border-radius: 16px;
+  }
+}
+
+@media (max-width: 380px) {
+  .smarthire-tour-tooltip {
+    width: calc(100vw - 12px) !important;
+    max-width: calc(100vw - 12px) !important;
+    left: 6px !important;
+    right: 6px !important;
+    box-sizing: border-box !important;
+    max-height: calc(100vh - 16px);
+    overflow-y: auto;
+    padding: 14px 12px;
+  }
+
+  .smarthire-tour-step-badge {
+    font-size: 0.68rem;
+    padding: 3px 8px;
+  }
+
+  .smarthire-tour-btn-skip {
+    font-size: 0.74rem;
+  }
+
+  .smarthire-welcome-actions-row {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .smarthire-welcome-btn-secondary,
+  .smarthire-welcome-btn-skip {
+    width: 100%;
+    text-align: center;
+  }
+}
+
+/* Reduced Motion Mode */
+@media (prefers-reduced-motion: reduce) {
+  .smarthire-spotlight-ring,
+  .smarthire-tour-tooltip,
+  .smarthire-welcome-modal,
+  .smarthire-completion-modal,
+  .smarthire-spotlight-cutout {
+    animation: none !important;
+    transition: none !important;
+  }
+}

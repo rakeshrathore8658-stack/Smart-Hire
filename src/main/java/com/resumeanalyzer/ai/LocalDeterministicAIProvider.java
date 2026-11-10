@@ -246,19 +246,40 @@ public class LocalDeterministicAIProvider implements AIProvider {
 
     private List<String> getRoleTaxonomy(String role) {
         String r = role.toLowerCase();
+        if (r.contains("full stack") || r.contains("fullstack")) {
+            return List.of("JavaScript", "TypeScript", "React", "Node.js", "Java", "Spring Boot", "HTML5", "CSS3", "MySQL", "REST APIs", "Git", "Docker");
+        }
         if (r.contains("spring") || r.contains("java")) {
-            return List.of("Java", "Spring Boot", "REST APIs", "MySQL", "Hibernate/JPA", "Git", "Microservices", "Docker", "Kubernetes", "AWS Cloud");
+            return List.of("Java", "Core Java", "Spring Boot", "Spring MVC", "Hibernate", "JPA", "REST APIs", "MySQL", "Microservices", "Git", "Maven", "Docker");
         }
-        if (r.contains("frontend") || r.contains("react") || r.contains("angular")) {
-            return List.of("JavaScript", "TypeScript", "React", "HTML5", "CSS3", "Redux", "Tailwind CSS", "Git", "REST APIs");
+        if (r.contains("frontend") || r.contains("react") || r.contains("angular") || r.contains("vue") || r.contains("web")) {
+            return List.of("JavaScript", "TypeScript", "React", "HTML5", "CSS3", "Redux", "Tailwind CSS", "Bootstrap", "Git", "REST APIs", "Vite");
         }
-        if (r.contains("python") || r.contains("data") || r.contains("ai") || r.contains("machine")) {
-            return List.of("Python", "SQL", "Pandas", "NumPy", "Scikit-learn", "Data Analysis", "Machine Learning", "Git", "Tableau");
+        if (r.contains("python") || r.contains("django") || r.contains("flask") || r.contains("fastapi")) {
+            return List.of("Python", "Django", "Flask", "FastAPI", "PostgreSQL", "REST APIs", "Docker", "Git", "SQL");
         }
-        if (r.contains("devops") || r.contains("cloud")) {
-            return List.of("Docker", "Kubernetes", "AWS", "CI/CD", "Jenkins", "Linux", "Terraform", "Git");
+        if (r.contains("data") || r.contains("analyst") || r.contains("bi") || r.contains("tableau")) {
+            return List.of("Python", "SQL", "Excel", "Tableau", "Power BI", "Pandas", "NumPy", "Data Analysis", "Statistics", "ETL");
         }
-        return List.of("Java", "Spring Boot", "SQL", "Git", "REST APIs", "Agile", "Docker");
+        if (r.contains("ai") || r.contains("machine learning") || r.contains("ml") || r.contains("deep learning")) {
+            return List.of("Python", "Machine Learning", "Deep Learning", "TensorFlow", "PyTorch", "NLP", "Pandas", "Scikit-learn", "Git", "LLM");
+        }
+        if (r.contains("devops") || r.contains("cloud") || r.contains("aws") || r.contains("azure") || r.contains("kubernetes")) {
+            return List.of("Docker", "Kubernetes", "AWS", "CI/CD", "Jenkins", "Linux", "Terraform", "Git", "Shell Scripting");
+        }
+        if (r.contains("qa") || r.contains("test") || r.contains("quality")) {
+            return List.of("Manual Testing", "Automation Testing", "Selenium", "JUnit", "Postman", "API Testing", "Java", "Git", "JIRA", "TestNG");
+        }
+        if (r.contains("android") || r.contains("mobile") || r.contains("ios") || r.contains("flutter")) {
+            return List.of("Kotlin", "Java", "Android Studio", "Flutter", "Dart", "REST APIs", "Git", "Mobile Architecture");
+        }
+        if (r.contains("security") || r.contains("cyber")) {
+            return List.of("Cybersecurity", "Network Security", "Penetration Testing", "OWASP", "Linux", "SIEM", "Firewalls", "Vulnerability Assessment");
+        }
+        if (r.contains("product") || r.contains("project") || r.contains("scrum") || r.contains("agile")) {
+            return List.of("Agile", "Scrum", "JIRA", "Product Management", "Roadmapping", "Sprint Planning", "Stakeholder Management", "SDLC");
+        }
+        return List.of("Java", "Python", "SQL", "REST APIs", "Git", "Data Structures and Algorithms", "Problem Solving", "Team Collaboration");
     }
 
     private String fallbackStaticJson() {

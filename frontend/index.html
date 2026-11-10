@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="SmartHire: AI Powered Resume Analyzer & Recruitment Platform. Build stronger profiles, hire top talent faster." />
+    <title>SmartHire - AI Resume Analyzer &amp; Recruitment Platform</title>
+
+    <!-- Early Theme Detection Script (Prevents flash of white in dark mode) -->
+    <script>
+      (function() {
+        try {
+          var savedTheme = localStorage.getItem("smarthire-theme") || "light";
+          document.documentElement.setAttribute("data-theme", savedTheme);
+          document.documentElement.style.colorScheme = savedTheme;
+        } catch (e) {}
+      })();
+    </script>
+  </head>
+  <body class="dashboard-body">
+    <div id="root"></div>
+    <script type="module" src="/src/main.jsx"></script>
+  </body>
+</html>

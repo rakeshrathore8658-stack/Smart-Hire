@@ -38,6 +38,42 @@ public class Notification {
     @Column(name = "action_url", length = 255)
     private String actionUrl;
 
+    @Column(name = "related_entity_id")
+    private Long relatedEntityId;
+
+    @Column(name = "related_entity_type", length = 50)
+    private String relatedEntityType; // APPLICATION, JOB, INTERVIEW
+
+    @Column(name = "job_title", length = 150)
+    private String jobTitle;
+
+    @Column(name = "action_type", length = 50)
+    private String actionType; // SHORTLIST_ADDED, SHORTLIST_REMOVED, STAGE_UPDATED, INTERVIEW_SCHEDULED, INTERVIEW_RESCHEDULED, INTERVIEW_CANCELLED, JOB_PUBLISHED
+
+    @Column(name = "previous_status", length = 50)
+    private String previousStatus;
+
+    @Column(name = "current_status", length = 50)
+    private String currentStatus;
+
+    @Column(name = "updated_by", length = 100)
+    private String updatedBy;
+
+    @Column(name = "interview_date", length = 100)
+    private String interviewDate;
+
+    @Column(name = "interview_time", length = 50)
+    private String interviewTime;
+
+    @Column(name = "interview_mode", length = 50)
+    private String interviewMode;
+
+    @Column(name = "meeting_link", length = 255)
+    private String meetingLink;
+
+    @Column(name = "hr_message", columnDefinition = "TEXT")
+    private String hrMessage;
+
     @Column(name = "is_read")
     @Builder.Default
     private boolean isRead = false;

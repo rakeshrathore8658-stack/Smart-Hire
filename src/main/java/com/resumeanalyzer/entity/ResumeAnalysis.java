@@ -124,6 +124,33 @@ public class ResumeAnalysis {
     @Column(name = "interview_type", length = 100)
     private String interviewType;
 
+    @Column(name = "meeting_link", length = 255)
+    private String meetingLink;
+
+    @Column(name = "interview_location", length = 255)
+    private String interviewLocation;
+
+    @Column(name = "previous_interview_date")
+    private LocalDateTime previousInterviewDate;
+
+    @Column(name = "cancellation_reason", length = 255)
+    private String cancellationReason;
+
+    @Column(name = "interview_status", length = 50)
+    private String interviewStatus; // SCHEDULED, RESCHEDULED, COMPLETED, CANCELLED
+
+    @Column(name = "tech_rating")
+    private Integer techRating;
+
+    @Column(name = "comm_rating")
+    private Integer commRating;
+
+    @Column(name = "problem_solving_rating")
+    private Integer problemSolvingRating;
+
+    @Column(name = "hr_notes", columnDefinition = "TEXT")
+    private String hrNotes;
+
     @Column(columnDefinition = "TEXT")
     private String feedbackNotes;
 

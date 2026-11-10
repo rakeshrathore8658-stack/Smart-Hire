@@ -15,6 +15,12 @@ import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationFailureHandler;
 import org.springframework.security.web.authentication.SimpleUrlAuthenticationSuccessHandler;
 import org.springframework.security.web.authentication.logout.SimpleUrlLogoutSuccessHandler;
+import org.springframework.web.cors.CorsConfiguration;
+import org.springframework.web.cors.CorsConfigurationSource;
+import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+
+import java.util.Arrays;
+import java.util.List;
 
 @Configuration
 public class SecurityConfig {
@@ -48,6 +54,21 @@ public class SecurityConfig {
     }
 
     @Bean
+    public CorsConfigurationSource corsConfigurationSource() {
+        CorsConfiguration config = new CorsConfiguration();
+        config.setAllowedOriginPatterns(List.of("http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:3000", "http://127.0.0.1:3000"));
+        config.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS", "PATCH"));
+        config.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type", "X-Requested-With", "Accept", "Origin", "Access-Control-Request-Method", "Access-Control-Request-Headers"));
+        config.setExposedHeaders(Arrays.asList("Access-Control-Allow-Origin", "Access-Control-Allow-Credentials"));
+        config.setAllowCredentials(true);
+        config.setMaxAge(3600L);
+
+        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+        source.registerCorsConfiguration("/**", config);
+        return source;
+    }
+
+    @Bean
     public SecurityFilterChain securityFilterChain(
             HttpSecurity http) throws Exception {
 
@@ -55,6 +76,12 @@ public class SecurityConfig {
 
         // Custom entry point and handlers using HTTP 302 + Location header to prevent Tomcat 11 abstract sendRedirect crash
         AuthenticationEntryPoint authEntryPoint = (request, response, authException) -> {
+            if (request.getRequestURI() != null && request.getRequestURI().startsWith("/api/")) {
+                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
+                response.setContentType("application/json");
+                response.getWriter().write("{\"status\":401,\"error\":\"Unauthorized\",\"message\":\"Authentication required\"}");
+                return;
+            }
             response.setStatus(HttpServletResponse.SC_FOUND);
             response.setHeader(HttpHeaders.LOCATION, "/login");
         };
@@ -70,6 +97,7 @@ public class SecurityConfig {
         logoutSuccessHandler.setRedirectStrategy(safeRedirect);
 
         http
+                .cors(cors -> cors.configurationSource(corsConfigurationSource()))
                 .authenticationProvider(authenticationProvider())
 
                 .csrf(csrf -> csrf
@@ -79,6 +107,8 @@ public class SecurityConfig {
                                 "/forgot-password",
                                 "/logout",
                                 "/api/**",
+                                "/ws/**",
+                                "/ws-raw/**",
                                 "/dashboard",
                                 "/dashboard/**"
                         )
@@ -103,6 +133,8 @@ public class SecurityConfig {
                                 "/images/**",
                                 "/favicon.ico",
                                 "/api/**",
+                                "/ws/**",
+                                "/ws-raw/**",
                                 "/error"
                         ).permitAll()
                         .requestMatchers(

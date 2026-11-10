@@ -35,4 +35,10 @@ public interface ResumeAnalysisRepository extends JpaRepository<ResumeAnalysis, 
     List<ResumeAnalysis> findByCandidateEmailNormalizedOrderByCreatedAtDesc(String candidateEmailNormalized);
 
     List<ResumeAnalysis> findByCandidateEmailNormalized(String candidateEmailNormalized);
+
+    long countByResumeId(Long resumeId);
+
+    @org.springframework.data.jpa.repository.Modifying
+    @org.springframework.data.jpa.repository.Query("DELETE FROM ResumeAnalysis ra WHERE ra.resume.id = :resumeId")
+    void deleteByResumeId(@org.springframework.data.repository.query.Param("resumeId") Long resumeId);
 }

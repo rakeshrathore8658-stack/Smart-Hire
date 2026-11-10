@@ -36,21 +36,29 @@ public class GeminiAIProvider implements AIProvider {
 
     @Override
     public String analyze(String prompt, String systemInstruction) {
-        return analyze(prompt, systemInstruction, null);
+        return analyze(prompt, systemInstruction, null, null);
     }
 
     @Override
     public String analyze(String prompt, String systemInstruction, String apiKeyOverride) {
+        return analyze(prompt, systemInstruction, apiKeyOverride, null);
+    }
+
+    @Override
+    public String analyze(String prompt, String systemInstruction, String apiKeyOverride, String modelOverride) {
         String apiKey = (apiKeyOverride != null && !apiKeyOverride.isBlank())
                 ? apiKeyOverride.trim()
                 : config.getGemini().getApiKey();
 
         if (apiKey == null || apiKey.isBlank() || apiKey.contains("${")) {
-            throw new IllegalStateException("Gemini API key is not configured. Please set GEMINI_API_KEY environment variable, application.properties, or enter it in the UI.");
+            throw new IllegalStateException("Gemini API key is not configured. Please provide a valid Gemini API key in the UI or set GEMINI_API_KEY environment variable.");
         }
 
-        String model = config.getGemini().getModel();
-        if (model == null || model.isBlank()) {
+        String model = (modelOverride != null && !modelOverride.isBlank())
+                ? modelOverride.trim()
+                : config.getGemini().getModel();
+
+        if (model == null || model.isBlank() || model.contains("3.8")) {
             model = "gemini-1.5-flash";
         }
 

@@ -3,6 +3,7 @@ package com.resumeanalyzer.controller;
 import com.resumeanalyzer.dto.CandidateInfoDTO;
 import com.resumeanalyzer.dto.ResumeUploadResponseDTO;
 import com.resumeanalyzer.entity.Resume;
+import com.resumeanalyzer.repository.ResumeAnalysisRepository;
 import com.resumeanalyzer.repository.ResumeRepository;
 import com.resumeanalyzer.repository.UserRepository;
 import com.resumeanalyzer.service.ResumeExtractionService;
@@ -20,6 +21,7 @@ import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.util.Map;
+import java.util.Optional;
 
 @RestController
 @RequestMapping({"/api/resume", "/api/resumes"})
@@ -31,7 +33,9 @@ public class ResumeController {
     private final ResumeNormalizationService resumeNormalizationService;
     private final ResumeExtractionService resumeExtractionService;
     private final ResumeRepository resumeRepository;
+    private final ResumeAnalysisRepository resumeAnalysisRepository;
     private final UserRepository userRepository;
+    private final com.resumeanalyzer.service.RealtimeSyncService realtimeSyncService;
 
     /**
      * Upload and parse resume document (PDF, DOC, DOCX, TXT).
@@ -58,46 +62,51 @@ public class ResumeController {
             // Step 2: Normalize Text
             String normalizedText = resumeNormalizationService.normalizeText(rawText);
             if (!resumeNormalizationService.isValidResumeText(normalizedText)) {
-                return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(Map.of(
-                        "status", 422,
-                        "error", "Unprocessable Entity",
-                        "message", "No readable or meaningful resume text found. Ensure file is not empty or scanned image only."
+                return ResponseEntity.badRequest().body(Map.of(
+                        "status", 400,
+                        "error", "Invalid Document",
+                        "message", "Uploaded document does not contain recognizable resume content or is empty."
                 ));
             }
 
-            // Step 3: Extract Candidate Info & Structured JSON
+            // Step 3: Information Extraction
             CandidateInfoDTO candidateInfo = resumeExtractionService.extractCandidateInfo(normalizedText);
-            String structuredJson = resumeExtractionService.toJson(candidateInfo);
 
+            // Check if resume with same normalized email/phone already exists
             String normEmail = com.resumeanalyzer.service.CandidateNormalizationUtils.normalizeEmail(candidateInfo.getEmail());
             String normPhone = com.resumeanalyzer.service.CandidateNormalizationUtils.normalizePhone(candidateInfo.getPhoneNumber());
-            String candName = com.resumeanalyzer.service.CandidateNormalizationUtils.normalizeName(candidateInfo.getName());
 
-            // Step 4: Deduplicate Candidate Resume (Upsert)
-            java.util.Optional<Resume> existingResumeOpt = java.util.Optional.empty();
-            if (normEmail != null) {
+            Optional<Resume> existingResumeOpt = Optional.empty();
+            if (!normEmail.isBlank()) {
                 existingResumeOpt = resumeRepository.findFirstByCandidateEmailNormalizedOrderByCreatedAtDesc(normEmail);
             }
-            if (existingResumeOpt.isEmpty() && normPhone != null) {
+            if (existingResumeOpt.isEmpty() && !normPhone.isBlank()) {
                 existingResumeOpt = resumeRepository.findFirstByCandidatePhoneNormalizedOrderByCreatedAtDesc(normPhone);
             }
 
-            Resume resume;
+            String candName = (candidateInfo.getName() != null && !candidateInfo.getName().isBlank())
+                    ? candidateInfo.getName().trim()
+                    : file.getOriginalFilename().replaceAll("(?i)\\.(pdf|docx?|txt)$", "").replace("_", " ").trim();
+
+            String structuredJson = resumeExtractionService.toJson(candidateInfo);
+
+            Resume resumeToSave;
             if (existingResumeOpt.isPresent()) {
-                resume = existingResumeOpt.get();
-                resume.setFileName(file.getOriginalFilename());
-                resume.setFileType(file.getContentType());
-                resume.setFileSize(file.getSize());
-                resume.setOriginalText(rawText);
-                resume.setNormalizedText(normalizedText);
-                resume.setStructuredJson(structuredJson);
-                resume.setCandidateName(candName);
-                resume.setCandidateEmail(candidateInfo.getEmail());
-                resume.setCandidateEmailNormalized(normEmail);
-                resume.setCandidatePhone(candidateInfo.getPhoneNumber());
-                resume.setCandidatePhoneNormalized(normPhone);
+                resumeToSave = existingResumeOpt.get();
+                resumeToSave.setFileName(file.getOriginalFilename());
+                resumeToSave.setFileType(file.getContentType());
+                resumeToSave.setFileSize(file.getSize());
+                resumeToSave.setOriginalText(rawText);
+                resumeToSave.setNormalizedText(normalizedText);
+                resumeToSave.setStructuredJson(structuredJson);
+                resumeToSave.setCandidateName(candName);
+                resumeToSave.setCandidateEmail(candidateInfo.getEmail());
+                resumeToSave.setCandidateEmailNormalized(normEmail);
+                resumeToSave.setCandidatePhone(candidateInfo.getPhoneNumber());
+                resumeToSave.setCandidatePhoneNormalized(normPhone);
+                resumeToSave.setUpdatedAt(java.time.LocalDateTime.now());
             } else {
-                resume = Resume.builder()
+                resumeToSave = Resume.builder()
                         .fileName(file.getOriginalFilename())
                         .fileType(file.getContentType())
                         .fileSize(file.getSize())
@@ -109,46 +118,46 @@ public class ResumeController {
                         .candidateEmailNormalized(normEmail)
                         .candidatePhone(candidateInfo.getPhoneNumber())
                         .candidatePhoneNormalized(normPhone)
+                        .createdAt(java.time.LocalDateTime.now())
                         .build();
             }
 
-            // Link authenticated user if available
+            // Associate current user if logged in
             try {
                 Authentication auth = SecurityContextHolder.getContext().getAuthentication();
                 if (auth != null && auth.getName() != null && !auth.getName().equalsIgnoreCase("anonymousUser")) {
-                    userRepository.findByEmail(auth.getName()).ifPresent(resume::setUser);
+                    userRepository.findByEmail(auth.getName()).ifPresent(resumeToSave::setUser);
                 }
             } catch (Exception ignored) {
             }
 
-            if (resume.getUser() == null) {
+            if (resumeToSave.getUser() == null) {
                 try {
                     ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
                     if (attrs != null && attrs.getRequest() != null && attrs.getRequest().getSession(false) != null) {
                         String email = (String) attrs.getRequest().getSession(false).getAttribute("userEmail");
                         if (email != null && !email.isBlank()) {
-                            userRepository.findByEmail(email).ifPresent(resume::setUser);
+                            userRepository.findByEmail(email).ifPresent(resumeToSave::setUser);
                         }
                     }
                 } catch (Exception ignored) {
                 }
             }
 
-            Resume saved = resumeRepository.save(resume);
+            Resume savedResume = resumeRepository.save(resumeToSave);
 
-            // Step 5: Construct Response DTO
-            String preview = normalizedText.length() > 300
-                    ? normalizedText.substring(0, 300) + "..."
+            String preview = normalizedText.length() > 600
+                    ? normalizedText.substring(0, 600) + "..."
                     : normalizedText;
 
             ResumeUploadResponseDTO response = ResumeUploadResponseDTO.builder()
-                    .resumeId(saved.getId())
-                    .fileName(saved.getFileName())
-                    .fileType(saved.getFileType())
-                    .fileSize(saved.getFileSize())
+                    .resumeId(savedResume.getId())
+                    .fileName(savedResume.getFileName())
+                    .fileType(savedResume.getFileType())
+                    .fileSize(savedResume.getFileSize() != null ? savedResume.getFileSize() : 0)
                     .extractedTextLength(normalizedText.length())
                     .detectedSkills(candidateInfo.getTechnicalSkills())
-                    .totalSkillsFound(candidateInfo.getTechnicalSkills().size())
+                    .totalSkillsFound(candidateInfo.getTechnicalSkills() != null ? candidateInfo.getTechnicalSkills().size() : 0)
                     .candidateInfo(candidateInfo)
                     .previewText(preview)
                     .message("Resume uploaded, normalized, and parsed successfully.")
@@ -192,5 +201,42 @@ public class ResumeController {
                         "error", "Not Found",
                         "message", "Resume with ID " + id + " does not exist."
                 )));
+    }
+
+    /**
+     * Delete resume by ID, cascading removal of associated analyses.
+     */
+    @DeleteMapping("/{id}")
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> deleteResume(@PathVariable("id") Long id) {
+        return resumeRepository.findById(id).map(resume -> {
+            log.info("Deleting Resume record [id={}] and all associated analyses", id);
+            try {
+                resumeAnalysisRepository.deleteByResumeId(id);
+                resumeAnalysisRepository.flush();
+                resumeRepository.delete(resume);
+                resumeRepository.flush();
+
+                try {
+                    realtimeSyncService.notifyResumeDeleted(id, resume.getCandidateName(), "Resume");
+                } catch (Exception wsEx) {
+                    log.warn("Failed to dispatch real-time resume delete event: {}", wsEx.getMessage());
+                }
+
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "message", "Resume #" + id + " and associated analyses successfully deleted from database."
+                ));
+            } catch (Exception ex) {
+                log.error("Failed to delete resume #" + id + ": {}", ex.getMessage(), ex);
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                        "success", false,
+                        "message", "Database error deleting resume: " + ex.getMessage()
+                ));
+            }
+        }).orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                "success", false,
+                "message", "Resume with ID " + id + " does not exist."
+        )));
     }
 }

@@ -4,6 +4,8 @@ import com.resumeanalyzer.entity.Notification;
 import com.resumeanalyzer.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,8 +20,11 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
 
+    @Autowired(required = false)
+    private SimpMessagingTemplate messagingTemplate;
+
     /**
-     * Dispatch and persist notification to a candidate / user.
+     * Dispatch, persist, and push real-time notification to a candidate / user.
      */
     @Transactional
     public Notification sendNotification(
@@ -29,6 +34,52 @@ public class NotificationService {
             String message,
             String type,
             String actionUrl) {
+
+        return sendEnrichedNotification(
+                userEmail,
+                candidateName,
+                title,
+                message,
+                type,
+                actionUrl,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null
+        );
+    }
+
+    /**
+     * Dispatch enriched real-time notification with full metadata context.
+     */
+    @Transactional
+    public Notification sendEnrichedNotification(
+            String userEmail,
+            String candidateName,
+            String title,
+            String message,
+            String type,
+            String actionUrl,
+            Long relatedEntityId,
+            String relatedEntityType,
+            String jobTitle,
+            String actionType,
+            String previousStatus,
+            String currentStatus,
+            String updatedBy,
+            String interviewDate,
+            String interviewTime,
+            String interviewMode,
+            String meetingLink,
+            String hrMessage) {
 
         if (userEmail == null || userEmail.isBlank()) {
             log.warn("Cannot send notification: userEmail is null or empty. Title: {}", title);
@@ -44,6 +95,18 @@ public class NotificationService {
                 .message(message)
                 .type(type != null ? type : "SYSTEM")
                 .actionUrl(actionUrl != null ? actionUrl : "/dashboard")
+                .relatedEntityId(relatedEntityId)
+                .relatedEntityType(relatedEntityType)
+                .jobTitle(jobTitle)
+                .actionType(actionType)
+                .previousStatus(previousStatus)
+                .currentStatus(currentStatus)
+                .updatedBy(updatedBy)
+                .interviewDate(interviewDate)
+                .interviewTime(interviewTime)
+                .interviewMode(interviewMode)
+                .meetingLink(meetingLink)
+                .hrMessage(hrMessage)
                 .isRead(false)
                 .createdAt(LocalDateTime.now())
                 .build();
@@ -52,7 +115,39 @@ public class NotificationService {
         Long savedId = saved != null ? saved.getId() : null;
         log.info("Notification dispatched [id={}] to user [{}] type=[{}]: {}",
                 savedId, normalizedEmail, type, title);
+
+        // Real-time WebSocket push
+        if (messagingTemplate != null) {
+            try {
+                // Topic subscription pattern: /topic/notifications/{email}
+                messagingTemplate.convertAndSend("/topic/notifications/" + normalizedEmail, saved);
+                // User-directed queue pattern: /user/{email}/queue/notifications
+                messagingTemplate.convertAndSendToUser(normalizedEmail, "/queue/notifications", saved);
+                log.debug("Real-time WebSocket notification pushed to: {}", normalizedEmail);
+            } catch (Exception wsEx) {
+                log.warn("WebSocket notification push failed for [{}]: {}", normalizedEmail, wsEx.getMessage());
+            }
+        }
+
         return saved != null ? saved : notification;
+    }
+
+    /**
+     * Broadcast notification to multiple users (e.g. new job created).
+     */
+    @Transactional
+    public void broadcastNotification(
+            List<String> userEmails,
+            String title,
+            String message,
+            String type,
+            String actionUrl) {
+
+        if (userEmails == null || userEmails.isEmpty()) return;
+
+        for (String email : userEmails) {
+            sendNotification(email, null, title, message, type, actionUrl);
+        }
     }
 
     /**
@@ -64,6 +159,17 @@ public class NotificationService {
             return Collections.emptyList();
         }
         return notificationRepository.findByUserEmailIgnoreCaseOrderByCreatedAtDesc(userEmail.trim());
+    }
+
+    /**
+     * Retrieve unread notifications for a user.
+     */
+    @Transactional(readOnly = true)
+    public List<Notification> getUnreadNotifications(String userEmail) {
+        if (userEmail == null || userEmail.isBlank()) {
+            return Collections.emptyList();
+        }
+        return notificationRepository.findByUserEmailIgnoreCaseAndIsReadFalseOrderByCreatedAtDesc(userEmail.trim());
     }
 
     /**
@@ -110,6 +216,27 @@ public class NotificationService {
     public void markAsRead(Long notificationId) {
         if (notificationId != null) {
             notificationRepository.markAsReadById(notificationId);
+        }
+    }
+
+    /**
+     * Retrieve a single notification by ID.
+     */
+    @Transactional(readOnly = true)
+    public java.util.Optional<Notification> getNotificationById(Long notificationId) {
+        if (notificationId == null) {
+            return java.util.Optional.empty();
+        }
+        return notificationRepository.findById(notificationId);
+    }
+
+    /**
+     * Delete a notification by ID.
+     */
+    @Transactional
+    public void deleteNotification(Long notificationId) {
+        if (notificationId != null) {
+            notificationRepository.deleteById(notificationId);
         }
     }
 }

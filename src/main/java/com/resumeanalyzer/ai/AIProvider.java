@@ -19,6 +19,13 @@ public interface AIProvider {
     }
 
     /**
+     * Executes AI prompt with optional API key and model override passed per-request.
+     */
+    default String analyze(String prompt, String systemInstruction, String apiKeyOverride, String modelOverride) {
+        return analyze(prompt, systemInstruction, apiKeyOverride);
+    }
+
+    /**
      * @return Friendly provider identifier ("gemini", "ollama", "local")
      */
     String getProviderName();

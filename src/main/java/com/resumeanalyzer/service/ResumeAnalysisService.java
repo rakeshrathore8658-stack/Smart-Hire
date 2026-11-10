@@ -38,7 +38,7 @@ public class ResumeAnalysisService {
      * Executes the end-to-end AI analysis workflow with optional API key.
      */
     @Transactional
-    public ATSAnalysisDTO analyzeResume(Long resumeId, String targetJobRole, String jobDescription, String aiProviderName, String geminiApiKey) {
+    public ATSAnalysisDTO analyzeResume(Long resumeId, String targetJobRole, String jobDescription, String aiProviderName, String modelName, String geminiApiKey) {
         Resume resume = resumeRepository.findById(resumeId)
                 .orElseThrow(() -> new IllegalArgumentException("Resume not found with ID: " + resumeId));
 
@@ -66,19 +66,24 @@ public class ResumeAnalysisService {
         // 4. Execute AI Provider with Per-Request Key Support and Automatic Failover
         AIProvider provider = aiProviderFactory.getProvider(aiProviderName, geminiApiKey);
         String rawJsonResponse;
+        String requestedProvider = (aiProviderName != null && !aiProviderName.isBlank()) ? aiProviderName.trim().toLowerCase() : "local";
         String actualProviderUsed = provider.getProviderName();
+        boolean fallbackUsed = false;
+        String fallbackReason = null;
 
         try {
-            log.info("Executing ATS analysis with provider: {}", actualProviderUsed);
-            rawJsonResponse = provider.analyze(prompt, DynamicPromptBuilderService.ATS_SYSTEM_INSTRUCTION, geminiApiKey);
+            log.info("Executing ATS analysis with provider: {} (model: {})", actualProviderUsed, modelName);
+            rawJsonResponse = provider.analyze(prompt, DynamicPromptBuilderService.ATS_SYSTEM_INSTRUCTION, geminiApiKey, modelName);
             if (rawJsonResponse == null || rawJsonResponse.isBlank()) {
                 throw new IllegalStateException("AI returned empty response");
             }
         } catch (Exception e) {
-            log.warn("AI Provider {} failed or key was invalid ({}). Falling back to dynamic local NLP engine.",
+            log.warn("AI Provider {} failed or key was invalid ({}). Falling back to dynamic local Rule-Based engine.",
                     actualProviderUsed, e.getMessage());
             rawJsonResponse = localAIProvider.analyze(prompt, DynamicPromptBuilderService.ATS_SYSTEM_INSTRUCTION);
-            actualProviderUsed = "local-nlp";
+            actualProviderUsed = "Local Rule-Based Analysis (Fallback)";
+            fallbackUsed = true;
+            fallbackReason = "Selected provider '" + requestedProvider + "' failed: " + e.getMessage();
         }
 
         // 5. Parse and assemble Analysis DTO from AI output
@@ -88,6 +93,9 @@ public class ResumeAnalysisService {
         analysisDTO.setTargetJobRole(role);
         analysisDTO.setJobDescription(jobDescription);
         analysisDTO.setAiProvider(actualProviderUsed);
+        analysisDTO.setModelUsed(modelName != null && !modelName.isBlank() ? modelName : actualProviderUsed);
+        analysisDTO.setFallbackUsed(fallbackUsed);
+        analysisDTO.setFallbackReason(fallbackReason);
         analysisDTO.setAnalyzedAt(LocalDateTime.now().toString());
 
         // 6. Respect the AI's Genuine Evaluated Overall Score
@@ -215,8 +223,13 @@ public class ResumeAnalysisService {
     }
 
     @Transactional
+    public ATSAnalysisDTO analyzeResume(Long resumeId, String targetJobRole, String jobDescription, String aiProviderName, String geminiApiKey) {
+        return analyzeResume(resumeId, targetJobRole, jobDescription, aiProviderName, null, geminiApiKey);
+    }
+
+    @Transactional
     public ATSAnalysisDTO analyzeResume(Long resumeId, String targetJobRole, String jobDescription, String aiProviderName) {
-        return analyzeResume(resumeId, targetJobRole, jobDescription, aiProviderName, null);
+        return analyzeResume(resumeId, targetJobRole, jobDescription, aiProviderName, null, null);
     }
 
     /**
@@ -226,15 +239,40 @@ public class ResumeAnalysisService {
     public ATSAnalysisDTO getAnalysis(Long analysisId) {
         ResumeAnalysis entity = resumeAnalysisRepository.findById(analysisId)
                 .orElseThrow(() -> new IllegalArgumentException("Analysis not found with ID: " + analysisId));
+        return toDTO(entity);
+    }
 
+    /**
+     * Converts a persisted ResumeAnalysis entity to ATSAnalysisDTO.
+     */
+    public ATSAnalysisDTO toDTO(ResumeAnalysis entity) {
+        if (entity == null) return null;
         try {
-            ATSAnalysisDTO dto = objectMapper.readValue(entity.getAnalysisJson(), ATSAnalysisDTO.class);
-            dto.setId(entity.getId());
-            return dto;
+            if (entity.getAnalysisJson() != null && !entity.getAnalysisJson().isBlank()) {
+                ATSAnalysisDTO dto = objectMapper.readValue(entity.getAnalysisJson(), ATSAnalysisDTO.class);
+                dto.setId(entity.getId());
+                dto.setResumeId(entity.getResume() != null ? entity.getResume().getId() : null);
+                dto.setFileName(entity.getResumeFileName());
+                dto.setTargetJobRole(entity.getTargetJobRole());
+                dto.setJobDescription(entity.getJobDescription());
+                return dto;
+            }
         } catch (Exception e) {
-            log.error("Failed to parse saved analysis JSON for ID: {}", analysisId, e);
-            throw new IllegalStateException("Error parsing analysis data");
+            log.warn("Could not deserialize entity analysisJson, synthesizing DTO: {}", e.getMessage());
         }
+
+        return ATSAnalysisDTO.builder()
+                .id(entity.getId())
+                .resumeId(entity.getResume() != null ? entity.getResume().getId() : null)
+                .fileName(entity.getResumeFileName())
+                .targetJobRole(entity.getTargetJobRole())
+                .jobDescription(entity.getJobDescription())
+                .overallScore(entity.getOverallScore())
+                .matchLevel(atsScoringService.resolveMatchLevel(entity.getOverallScore()))
+                .candidate(entity.getCandidateInfo())
+                .aiProvider(entity.getAiProvider())
+                .analyzedAt(entity.getCreatedAt() != null ? entity.getCreatedAt().toString() : LocalDateTime.now().toString())
+                .build();
     }
 
     private ATSAnalysisDTO parseOrFallback(String json, CandidateInfoDTO candidate, String targetRole, String jobDesc) {

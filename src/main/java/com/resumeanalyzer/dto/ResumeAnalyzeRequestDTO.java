@@ -16,5 +16,6 @@ public class ResumeAnalyzeRequestDTO {
     private String customJobRole;
     private String jobDescription;
     private String aiProvider; // "gemini", "ollama", "local"
+    private String model;      // optional model name e.g. "codellama", "gemini-1.5-flash"
     private String geminiApiKey; // Optional user-provided Gemini API key
 }

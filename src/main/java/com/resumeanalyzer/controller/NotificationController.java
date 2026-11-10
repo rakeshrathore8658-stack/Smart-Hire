@@ -5,6 +5,7 @@ import com.resumeanalyzer.service.NotificationService;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -44,12 +45,24 @@ public class NotificationController {
         } catch (Exception ignored) {
         }
 
-        return ""; // No fallback mock user
+        return "";
+    }
+
+    private String resolveUserEmail(String emailParam, String headerEmail) {
+        if (emailParam != null && !emailParam.isBlank()) {
+            return emailParam.trim().toLowerCase();
+        }
+        if (headerEmail != null && !headerEmail.isBlank()) {
+            return headerEmail.trim().toLowerCase();
+        }
+        return getActiveUserEmail();
     }
 
     @GetMapping
-    public ResponseEntity<?> getUserNotifications() {
-        String email = getActiveUserEmail();
+    public ResponseEntity<?> getUserNotifications(
+            @RequestParam(value = "email", required = false) String emailParam,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail) {
+        String email = resolveUserEmail(emailParam, headerEmail);
         List<Notification> list = notificationService.getNotificationsForUser(email);
         long unread = notificationService.getUnreadCount(email);
         return ResponseEntity.ok(Map.of(
@@ -60,9 +73,32 @@ public class NotificationController {
         ));
     }
 
+    @GetMapping("/unread-count")
+    public ResponseEntity<?> getUnreadCount(
+            @RequestParam(value = "email", required = false) String emailParam,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail) {
+        String email = resolveUserEmail(emailParam, headerEmail);
+        long unread = notificationService.getUnreadCount(email);
+        return ResponseEntity.ok(Map.of("unreadCount", unread));
+    }
+
+    @GetMapping("/unread")
+    public ResponseEntity<?> getUnreadNotifications(
+            @RequestParam(value = "email", required = false) String emailParam,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail) {
+        String email = resolveUserEmail(emailParam, headerEmail);
+        List<Notification> list = notificationService.getUnreadNotifications(email);
+        return ResponseEntity.ok(Map.of(
+                "unreadCount", list.size(),
+                "notifications", list
+        ));
+    }
+
     @PostMapping("/mark-all-read")
-    public ResponseEntity<?> markAllAsRead() {
-        String email = getActiveUserEmail();
+    public ResponseEntity<?> markAllAsReadPost(
+            @RequestParam(value = "email", required = false) String emailParam,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail) {
+        String email = resolveUserEmail(emailParam, headerEmail);
         notificationService.markAllRead(email);
         return ResponseEntity.ok(Map.of(
                 "success", true,
@@ -70,13 +106,64 @@ public class NotificationController {
         ));
     }
 
+    @PatchMapping("/read-all")
+    public ResponseEntity<?> markAllAsReadPatch(
+            @RequestParam(value = "email", required = false) String emailParam,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail) {
+        return markAllAsReadPost(emailParam, headerEmail);
+    }
+
+    @GetMapping("/{id}")
+    public ResponseEntity<?> getNotificationById(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "email", required = false) String emailParam,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail) {
+        String email = resolveUserEmail(emailParam, headerEmail);
+        return notificationService.getNotificationById(id).map(notif -> {
+            // Validate ownership: candidate cannot access other candidate's notifications
+            if (email != null && !email.isBlank() && notif.getUserEmail() != null
+                    && !notif.getUserEmail().equalsIgnoreCase(email)) {
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                boolean isHr = auth != null && auth.getAuthorities().stream()
+                        .anyMatch(a -> a.getAuthority().equalsIgnoreCase("ROLE_HR") || a.getAuthority().equalsIgnoreCase("HR"));
+                if (!isHr) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                            .body(Map.of("message", "Access denied: You cannot view notifications belonging to other candidates."));
+                }
+            }
+
+            // Auto-mark as read on viewing details if currently unread
+            if (!notif.isRead()) {
+                notificationService.markAsRead(id);
+                notif.setRead(true);
+            }
+
+            return ResponseEntity.ok(notif);
+        }).orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).build());
+    }
+
     @PostMapping("/{id}/read")
-    public ResponseEntity<?> markAsRead(@PathVariable("id") Long id) {
+    public ResponseEntity<?> markAsReadPost(@PathVariable("id") Long id) {
         notificationService.markAsRead(id);
         return ResponseEntity.ok(Map.of(
                 "success", true,
                 "notificationId", id,
                 "message", "Notification marked as read."
+        ));
+    }
+
+    @PatchMapping("/{id}/read")
+    public ResponseEntity<?> markAsReadPatch(@PathVariable("id") Long id) {
+        return markAsReadPost(id);
+    }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<?> deleteNotification(@PathVariable("id") Long id) {
+        notificationService.deleteNotification(id);
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "notificationId", id,
+                "message", "Notification deleted successfully."
         ));
     }
 }

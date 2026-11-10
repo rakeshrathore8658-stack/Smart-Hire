@@ -34,26 +34,50 @@ public class OllamaAIProvider implements AIProvider {
 
     @Override
     public String analyze(String prompt, String systemInstruction) {
+        return analyze(prompt, systemInstruction, null, null);
+    }
+
+    @Override
+    public String analyze(String prompt, String systemInstruction, String apiKeyOverride) {
+        return analyze(prompt, systemInstruction, apiKeyOverride, null);
+    }
+
+    @Override
+    public String analyze(String prompt, String systemInstruction, String apiKeyOverride, String modelOverride) {
         try {
             String baseUrl = config.getOllama().getBaseUrl();
+            if (baseUrl == null || baseUrl.isBlank()) {
+                baseUrl = "http://localhost:11434";
+            }
             if (baseUrl.endsWith("/")) {
                 baseUrl = baseUrl.substring(0, baseUrl.length() - 1);
             }
             URI uri = URI.create(baseUrl + "/api/generate");
 
+            String effectiveModel = (modelOverride != null && !modelOverride.isBlank())
+                    ? modelOverride.trim()
+                    : config.getOllama().getModel();
+
+            if (effectiveModel == null || effectiveModel.isBlank()) {
+                effectiveModel = "codellama";
+            }
+
             Map<String, Object> requestBody = new HashMap<>();
-            requestBody.put("model", config.getOllama().getModel());
+            requestBody.put("model", effectiveModel);
             requestBody.put("prompt", prompt);
             requestBody.put("system", systemInstruction);
             requestBody.put("format", "json");
             requestBody.put("stream", false);
 
             String jsonPayload = objectMapper.writeValueAsString(requestBody);
+            int timeoutSec = Math.max(120, config.getOllama().getTimeoutSeconds());
+
+            log.info("Sending resume analysis request to Ollama (model: {}, timeout: {}s)", effectiveModel, timeoutSec);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(uri)
                     .header("Content-Type", "application/json")
-                    .timeout(Duration.ofSeconds(config.getOllama().getTimeoutSeconds()))
+                    .timeout(Duration.ofSeconds(timeoutSec))
                     .POST(HttpRequest.BodyPublishers.ofString(jsonPayload))
                     .build();
 
@@ -61,19 +85,36 @@ public class OllamaAIProvider implements AIProvider {
 
             if (response.statusCode() == 200) {
                 JsonNode root = objectMapper.readTree(response.body());
+                String rawText;
                 if (root.has("response")) {
-                    return root.get("response").asText();
+                    rawText = root.get("response").asText();
+                } else {
+                    rawText = response.body();
                 }
-                return response.body();
+                return cleanMarkdownCodeBlocks(rawText);
             } else {
-                log.warn("Ollama returned status code: {}", response.statusCode());
-                throw new RuntimeException("Ollama error status: " + response.statusCode());
+                log.warn("Ollama returned status code {}: {}", response.statusCode(), response.body());
+                throw new RuntimeException("Ollama error status " + response.statusCode() + ": " + response.body());
             }
 
         } catch (Exception e) {
             log.warn("Ollama invocation failed: {}", e.getMessage());
             throw new RuntimeException("Ollama processing failed: " + e.getMessage(), e);
         }
+    }
+
+    private String cleanMarkdownCodeBlocks(String text) {
+        if (text == null) return "";
+        String trimmed = text.trim();
+        if (trimmed.startsWith("```json")) {
+            trimmed = trimmed.substring(7);
+        } else if (trimmed.startsWith("```")) {
+            trimmed = trimmed.substring(3);
+        }
+        if (trimmed.endsWith("```")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 3);
+        }
+        return trimmed.trim();
     }
 
     @Override

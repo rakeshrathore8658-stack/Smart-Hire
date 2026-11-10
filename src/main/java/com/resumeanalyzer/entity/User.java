@@ -62,6 +62,18 @@ public class User {
     @Column(name = "notif_interview_updates")
     private Boolean notifInterviewUpdates = true;
 
+    @Column(name = "tour_completed")
+    private Boolean tourCompleted = false;
+
+    @Column(name = "tour_skipped")
+    private Boolean tourSkipped = false;
+
+    @Column(name = "tour_seen")
+    private Boolean tourSeen = false;
+
+    @Column(name = "tour_last_step")
+    private Integer tourLastStep = 0;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
@@ -218,5 +230,37 @@ public class User {
 
     public void setNotifInterviewUpdates(Boolean notifInterviewUpdates) {
         this.notifInterviewUpdates = (notifInterviewUpdates != null) ? notifInterviewUpdates : false;
+    }
+
+    public boolean isTourCompleted() {
+        return Boolean.TRUE.equals(tourCompleted);
+    }
+
+    public void setTourCompleted(Boolean tourCompleted) {
+        this.tourCompleted = (tourCompleted != null) ? tourCompleted : false;
+    }
+
+    public boolean isTourSkipped() {
+        return Boolean.TRUE.equals(tourSkipped);
+    }
+
+    public void setTourSkipped(Boolean tourSkipped) {
+        this.tourSkipped = (tourSkipped != null) ? tourSkipped : false;
+    }
+
+    public boolean isTourSeen() {
+        return Boolean.TRUE.equals(tourSeen) || Boolean.TRUE.equals(tourCompleted) || Boolean.TRUE.equals(tourSkipped);
+    }
+
+    public void setTourSeen(Boolean tourSeen) {
+        this.tourSeen = (tourSeen != null) ? tourSeen : false;
+    }
+
+    public int getTourLastStep() {
+        return (tourLastStep != null) ? tourLastStep : 0;
+    }
+
+    public void setTourLastStep(Integer tourLastStep) {
+        this.tourLastStep = (tourLastStep != null) ? tourLastStep : 0;
     }
 }
