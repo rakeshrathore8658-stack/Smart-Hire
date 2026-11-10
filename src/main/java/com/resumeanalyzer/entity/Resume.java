@@ -29,15 +29,12 @@ public class Resume {
     @Column(name = "file_size")
     private Long fileSize;
 
-    @Lob
     @Column(name = "original_text", columnDefinition = "TEXT")
     private String originalText;
 
-    @Lob
     @Column(name = "normalized_text", columnDefinition = "TEXT")
     private String normalizedText;
 
-    @Lob
     @Column(name = "structured_json", columnDefinition = "TEXT")
     private String structuredJson;
 

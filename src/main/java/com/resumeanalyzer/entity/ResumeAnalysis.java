@@ -57,7 +57,6 @@ public class ResumeAnalysis {
     @Column(name = "target_job_role", length = 100)
     private String targetJobRole;
 
-    @Lob
     @Column(name = "job_description", columnDefinition = "TEXT")
     private String jobDescription;
 
@@ -93,7 +92,6 @@ public class ResumeAnalysis {
     @Builder.Default
     private Integer contentQualityScore = 0;
 
-    @Lob
     @Column(name = "analysis_json", columnDefinition = "TEXT")
     private String analysisJson;
 
