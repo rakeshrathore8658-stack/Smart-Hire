@@ -41,8 +41,8 @@ const ResumeAnalyzer = () => {
       name: 'Google Gemini AI',
       available: false,
       status: 'DEGRADED',
-      installedModels: ['gemini-2.0-flash', 'gemini-1.5-flash', 'gemini-1.5-pro'],
-      recommendedModel: 'gemini-2.0-flash',
+      installedModels: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+      recommendedModel: 'gemini-2.5-flash',
       description: 'Deep ATS reasoning, resume rewriting, and semantic analysis.',
     },
   ]);
@@ -81,7 +81,7 @@ const ResumeAnalyzer = () => {
             const geminiProv = formatted.find((p) => p.id === 'gemini');
             if (geminiProv && geminiProv.available) {
               setAiProvider('gemini');
-              setSelectedModel(geminiProv.recommendedModel || 'gemini-1.5-flash');
+              setSelectedModel(geminiProv.recommendedModel || 'gemini-2.5-flash');
             } else {
               setAiProvider('local');
               setSelectedModel('Rule-Based Local Engine v2.0');
@@ -680,7 +680,14 @@ const ResumeAnalyzer = () => {
                     name="aiProvider"
                     className="form-control"
                     value={aiProvider}
-                    onChange={(e) => setAiProvider(e.target.value)}
+                    onChange={(e) => {
+                      const newProv = e.target.value;
+                      setAiProvider(newProv);
+                      const target = providers.find((p) => p.id === newProv);
+                      if (target) {
+                        setSelectedModel(target.recommendedModel || (target.installedModels && target.installedModels[0]) || '');
+                      }
+                    }}
                   >
                     {providers.map((p) => (
                       <option key={p.id} value={p.id}>

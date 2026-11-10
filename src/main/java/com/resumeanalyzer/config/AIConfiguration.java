@@ -27,7 +27,7 @@ public class AIConfiguration {
     @Data
     public static class GeminiProperties {
         private String apiKey = "";
-        private String model = "gemini-1.5-flash";
+        private String model = "gemini-2.5-flash";
         private int timeoutSeconds = 45;
     }
 }
