@@ -8,11 +8,11 @@
         <version>4.1.2</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
-    <groupId>com.resumeanalyzer</groupId>
-    <artifactId>Resume-Analyzer</artifactId>
+    <groupId>com.smarthire</groupId>
+    <artifactId>smart-hire</artifactId>
     <version>0.0.1-SNAPSHOT</version>
-    <name>ResumeAnalyzer</name>
-    <description>ResumeAnalyzer</description>
+    <name>SmartHire</name>
+    <description>SmartHire - AI-Powered Resume Analyzer and Hiring Platform</description>
     <url/>
     <licenses>
         <license/>
