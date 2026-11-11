@@ -2384,6 +2384,24 @@ a.funnel-stage-card:hover, a.funnel-card-interactive:hover {
     font-weight: 700;
 }
 
+.custom-select-group-header {
+    padding: 8px 12px 4px;
+    font-size: 0.72rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border-color);
+    margin-top: 6px;
+    user-select: none;
+    pointer-events: none;
+}
+
+.custom-select-group-header:first-child {
+    border-top: none;
+    margin-top: 0;
+}
+
 /* --------------------------------------------------------------------------
    2. FLOATING SaaS PROFILE DROPDOWN MENU
    -------------------------------------------------------------------------- */

@@ -17,10 +17,17 @@ const CustomSelect = ({
   const wrapperRef = useRef(null);
   const searchInputRef = useRef(null);
 
-  // Normalize options into { value, label, badge, icon } objects
-  const normalizedOptions = options.map((opt) => {
+  // Normalize options into { value, label, badge, icon, isHeader } objects
+  const normalizedOptions = options.map((opt, idx) => {
     if (typeof opt === 'string' || typeof opt === 'number') {
       return { value: opt, label: String(opt) };
+    }
+    if (opt.isHeader || opt.type === 'header') {
+      return {
+        isHeader: true,
+        label: opt.label || opt.name,
+        key: `header-${idx}-${opt.label || opt.name}`,
+      };
     }
     return {
       value: opt.value ?? opt.id ?? opt.name,
@@ -32,11 +39,12 @@ const CustomSelect = ({
   });
 
   const selectedOption = normalizedOptions.find(
-    (opt) => String(opt.value) === String(value)
+    (opt) => !opt.isHeader && String(opt.value) === String(value)
   );
 
   // Filter options if searchable
   const filteredOptions = normalizedOptions.filter((opt) => {
+    if (opt.isHeader) return !searchQuery;
     if (!searchQuery) return true;
     return opt.label.toLowerCase().includes(searchQuery.toLowerCase());
   });
@@ -150,7 +158,14 @@ const CustomSelect = ({
 
           <div className="custom-select-options-list">
             {filteredOptions.length > 0 ? (
-              filteredOptions.map((opt) => {
+              filteredOptions.map((opt, idx) => {
+                if (opt.isHeader) {
+                  return (
+                    <div key={opt.key || `hdr-${idx}`} className="custom-select-group-header">
+                      {opt.label}
+                    </div>
+                  );
+                }
                 const isSelected = String(opt.value) === String(value);
                 return (
                   <div

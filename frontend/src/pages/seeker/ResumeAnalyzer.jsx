@@ -1,7 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import AnalysisResult from '../../components/common/AnalysisResult';
+import CustomSelect from '../../components/common/CustomSelect';
 
 const ResumeAnalyzer = () => {
   const [searchParams] = useSearchParams();
@@ -250,6 +251,69 @@ const ResumeAnalyzer = () => {
   const currentProvider = providers.find((p) => p.id === aiProvider);
   const availableModels = currentProvider?.installedModels || [];
 
+  const roleOptions = useMemo(() => [
+    ...(dbJobs.length > 0
+      ? [
+          { isHeader: true, label: 'Active Vacancies (Database)' },
+          ...dbJobs.map((j) => ({
+            value: j.title,
+            label: `${j.title} (${j.department || 'Tech'} - ${j.location || 'Remote'})`,
+            badge: 'Active Vacancy',
+          })),
+        ]
+      : []),
+    { isHeader: true, label: 'Software Engineering & Development' },
+    { value: 'Java Developer', label: 'Java Developer' },
+    { value: 'Spring Boot Developer', label: 'Spring Boot Developer' },
+    { value: 'Backend Developer', label: 'Backend Developer' },
+    { value: 'Frontend Developer', label: 'Frontend Developer' },
+    { value: 'Full Stack Developer', label: 'Full Stack Developer' },
+    { value: 'MERN Stack Developer', label: 'MERN Stack Developer' },
+    { value: 'Software Engineer', label: 'Software Engineer' },
+    { value: 'Android Developer', label: 'Android Developer' },
+
+    { isHeader: true, label: 'Data & Artificial Intelligence' },
+    { value: 'Data Analyst', label: 'Data Analyst' },
+    { value: 'Data Scientist', label: 'Data Scientist' },
+    { value: 'Data Engineer', label: 'Data Engineer' },
+    { value: 'Machine Learning Engineer', label: 'Machine Learning Engineer' },
+    { value: 'AI Engineer', label: 'AI Engineer' },
+
+    { isHeader: true, label: 'Cloud, DevOps & Quality Assurance' },
+    { value: 'DevOps Engineer', label: 'DevOps Engineer' },
+    { value: 'Cloud Engineer', label: 'Cloud Engineer' },
+    { value: 'AWS Engineer', label: 'AWS Engineer' },
+    { value: 'QA Automation Engineer', label: 'QA Automation Engineer' },
+    { value: 'Cybersecurity Analyst', label: 'Cybersecurity Analyst' },
+
+    { isHeader: true, label: 'Product, Business & Management' },
+    { value: 'Business Analyst', label: 'Business Analyst' },
+    { value: 'Project Manager', label: 'Project Manager' },
+    { value: 'Product Manager', label: 'Product Manager' },
+    { value: 'HR Executive', label: 'HR Executive' },
+
+    { isHeader: true, label: 'Custom' },
+    { value: 'Other', label: 'Other / Custom Job Role' },
+  ], [dbJobs]);
+
+  const providerOptions = useMemo(() => {
+    return providers.map((p) => ({
+      value: p.id,
+      label: p.name,
+      badge: p.available ? '● Available' : '(Ready)',
+    }));
+  }, [providers]);
+
+  const modelOptions = useMemo(() => {
+    if (aiProvider === 'gemini') {
+      return [{ value: 'auto', label: '✨ Auto (Any Working Gemini Model)' }];
+    }
+    if (availableModels.length > 0) {
+      return availableModels.map((m) => ({ value: m, label: m }));
+    }
+    return [{ value: currentProvider?.recommendedModel || 'default', label: currentProvider?.recommendedModel || 'Default Model' }];
+  }, [aiProvider, availableModels, currentProvider]);
+
   const fileSizeFormatted = file
     ? file.size > 1024 * 1024
       ? `${(file.size / (1024 * 1024)).toFixed(1)} MB`
@@ -484,62 +548,20 @@ const ResumeAnalyzer = () => {
                 >
                   Target Job Role
                 </label>
-                <select
+                <CustomSelect
                   id="jobRole"
-                  name="jobRole"
-                  className="form-control"
                   value={targetRole}
-                  onChange={(e) => {
-                    const selectedVal = e.target.value;
+                  onChange={(selectedVal) => {
                     setTargetRole(selectedVal);
                     const found = dbJobs.find((j) => j.title?.toLowerCase() === selectedVal?.toLowerCase());
                     if (found && found.description && !jobDescription) {
                       setJobDescription(found.description);
                     }
                   }}
-                  required
-                >
-                  {dbJobs.length > 0 && (
-                    <optgroup label="Active Vacancies (Database)">
-                      {dbJobs.map((j) => (
-                        <option key={j.id} value={j.title}>
-                          {j.title} ({j.department} - {j.location})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  <optgroup label="Software Engineering &amp; Development">
-                    <option value="Java Developer">Java Developer</option>
-                    <option value="Spring Boot Developer">Spring Boot Developer</option>
-                    <option value="Backend Developer">Backend Developer</option>
-                    <option value="Frontend Developer">Frontend Developer</option>
-                    <option value="Full Stack Developer">Full Stack Developer</option>
-                    <option value="MERN Stack Developer">MERN Stack Developer</option>
-                    <option value="Software Engineer">Software Engineer</option>
-                    <option value="Android Developer">Android Developer</option>
-                  </optgroup>
-                  <optgroup label="Data &amp; Artificial Intelligence">
-                    <option value="Data Analyst">Data Analyst</option>
-                    <option value="Data Scientist">Data Scientist</option>
-                    <option value="Data Engineer">Data Engineer</option>
-                    <option value="Machine Learning Engineer">Machine Learning Engineer</option>
-                    <option value="AI Engineer">AI Engineer</option>
-                  </optgroup>
-                  <optgroup label="Cloud, DevOps &amp; Quality Assurance">
-                    <option value="DevOps Engineer">DevOps Engineer</option>
-                    <option value="Cloud Engineer">Cloud Engineer</option>
-                    <option value="AWS Engineer">AWS Engineer</option>
-                    <option value="QA Automation Engineer">QA Automation Engineer</option>
-                    <option value="Cybersecurity Analyst">Cybersecurity Analyst</option>
-                  </optgroup>
-                  <optgroup label="Product, Business &amp; Management">
-                    <option value="Business Analyst">Business Analyst</option>
-                    <option value="Project Manager">Project Manager</option>
-                    <option value="Product Manager">Product Manager</option>
-                    <option value="HR Executive">HR Executive</option>
-                  </optgroup>
-                  <option value="Other">Other / Custom Job Role</option>
-                </select>
+                  options={roleOptions}
+                  placeholder="Select Target Job Role..."
+                  searchable={true}
+                />
               </div>
 
               {targetRole === 'Other' && (
@@ -673,13 +695,10 @@ const ResumeAnalyzer = () => {
                   >
                     AI Provider
                   </label>
-                  <select
+                  <CustomSelect
                     id="aiProviderSelect"
-                    name="aiProvider"
-                    className="form-control"
                     value={aiProvider}
-                    onChange={(e) => {
-                      const newProv = e.target.value;
+                    onChange={(newProv) => {
                       setAiProvider(newProv);
                       if (newProv === 'gemini') {
                         setSelectedModel('auto');
@@ -690,13 +709,9 @@ const ResumeAnalyzer = () => {
                         }
                       }
                     }}
-                  >
-                    {providers.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name} {p.available ? '● Available' : '(Ready)'}
-                      </option>
-                    ))}
-                  </select>
+                    options={providerOptions}
+                    placeholder="Select AI Provider..."
+                  />
                 </div>
 
                 {/* Model Selector */}
@@ -713,28 +728,14 @@ const ResumeAnalyzer = () => {
                   >
                     Specific Model
                   </label>
-                  <select
+                  <CustomSelect
                     id="modelSelect"
-                    name="model"
-                    className="form-control"
                     value={selectedModel}
-                    onChange={(e) => setSelectedModel(e.target.value)}
+                    onChange={(newModel) => setSelectedModel(newModel)}
+                    options={modelOptions}
+                    placeholder="Select Model..."
                     disabled={aiProvider !== 'gemini' && availableModels.length === 0}
-                  >
-                    {aiProvider === 'gemini' ? (
-                      <option value="auto">✨ Auto (Any Working Gemini Model)</option>
-                    ) : availableModels.length > 0 ? (
-                      availableModels.map((m) => (
-                        <option key={m} value={m}>
-                          {m}
-                        </option>
-                      ))
-                    ) : (
-                      <option value={currentProvider?.recommendedModel || 'default'}>
-                        {currentProvider?.recommendedModel || 'Default Model'}
-                      </option>
-                    )}
-                  </select>
+                  />
                 </div>
               </div>
 
