@@ -133,12 +133,8 @@ public class AIProviderHealthService {
     private AIProviderInfoDTO checkGeminiHealth() {
         String key = aiConfig.getGemini().getApiKey();
         boolean hasKey = key != null && !key.isBlank() && !key.contains("${");
-        String configuredModel = aiConfig.getGemini().getModel();
-        if (configuredModel == null || configuredModel.isBlank()) {
-            configuredModel = "gemini-2.5-flash";
-        }
-
-        List<String> models = List.of("gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-pro", "gemini-1.5-flash");
+        String configuredModel = "auto";
+        List<String> models = List.of("auto");
 
         if (hasKey) {
             return AIProviderInfoDTO.builder()

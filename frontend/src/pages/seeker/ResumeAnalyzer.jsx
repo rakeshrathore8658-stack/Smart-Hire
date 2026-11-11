@@ -41,7 +41,7 @@ const ResumeAnalyzer = () => {
       name: 'Google Gemini AI',
       available: false,
       status: 'DEGRADED',
-      installedModels: ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
+      installedModels: ['auto'],
       recommendedModel: 'auto',
       description: 'Deep ATS reasoning, resume rewriting, and semantic analysis with automatic multi-model failover.',
     },
@@ -724,14 +724,7 @@ const ResumeAnalyzer = () => {
                     disabled={aiProvider !== 'gemini' && availableModels.length === 0}
                   >
                     {aiProvider === 'gemini' ? (
-                      <>
-                        <option value="auto">✨ Auto (Any Working Gemini Model)</option>
-                        {availableModels.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
-                        ))}
-                      </>
+                      <option value="auto">✨ Auto (Any Working Gemini Model)</option>
                     ) : availableModels.length > 0 ? (
                       availableModels.map((m) => (
                         <option key={m} value={m}>
