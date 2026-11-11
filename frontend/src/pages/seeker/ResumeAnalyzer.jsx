@@ -471,7 +471,7 @@ const ResumeAnalyzer = () => {
                     </span>
                     <strong style={{ display: 'block', fontSize: '0.95rem', color: 'var(--text-primary)' }}>
                       Drag &amp; drop your resume here, or{' '}
-                      <span style={{ color: 'var(--accent)', textDecoration: 'underline' }}>browse</span>
+                      <span style={{ color: 'var(--accent)', textDecoration: 'underline' }}>browse file</span>
                     </strong>
                     <p style={{ margin: '6px 0 0', fontSize: '0.78rem', color: 'var(--text-muted)' }}>
                       Supports PDF, Microsoft Word (.doc, .docx) &amp; Text files
