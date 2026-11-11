@@ -16,7 +16,6 @@ const ResumeAnalyzer = () => {
   // AI Provider & Model States
   const [aiProvider, setAiProvider] = useState('ollama');
   const [selectedModel, setSelectedModel] = useState('codellama:latest');
-  const [geminiApiKey, setGeminiApiKey] = useState('');
   const [providers, setProviders] = useState([
     {
       id: 'ollama',
@@ -216,7 +215,6 @@ const ResumeAnalyzer = () => {
       formData.append('jobDescription', jobDescription);
       formData.append('aiProvider', aiProvider);
       if (selectedModel) formData.append('model', selectedModel);
-      if (geminiApiKey.trim()) formData.append('geminiApiKey', geminiApiKey.trim());
 
       const res = await api.post('/analysis/analyze', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -739,33 +737,6 @@ const ResumeAnalyzer = () => {
                   </select>
                 </div>
               </div>
-
-              {/* Optional Gemini API Key input if Gemini is selected */}
-              {aiProvider === 'gemini' && (
-                <div style={{ marginTop: '12px' }}>
-                  <label
-                    htmlFor="geminiApiKey"
-                    style={{
-                      display: 'block',
-                      fontSize: '0.8rem',
-                      fontWeight: 600,
-                      marginBottom: '4px',
-                      color: 'var(--text-primary)',
-                    }}
-                  >
-                    Gemini API Key <small style={{ color: 'var(--text-muted)' }}>(Optional - overrides server key)</small>
-                  </label>
-                  <input
-                    type="password"
-                    id="geminiApiKey"
-                    name="geminiApiKey"
-                    className="form-control"
-                    placeholder="AIzaSy... (leave blank to use server environment key)"
-                    value={geminiApiKey}
-                    onChange={(e) => setGeminiApiKey(e.target.value)}
-                  />
-                </div>
-              )}
 
               {/* Provider Info & Health Badge */}
               <div

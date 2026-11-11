@@ -153,7 +153,7 @@ public class AIProviderHealthService {
                     .name("Google Gemini AI")
                     .type("CLOUD_LLM")
                     .status("API_KEY_MISSING")
-                    .statusMessage("API Key missing. Enter your key in UI or set GEMINI_API_KEY in application.properties")
+                    .statusMessage("GEMINI_API_KEY environment variable not configured on server")
                     .available(false)
                     .models(models)
                     .defaultModel(configuredModel)
