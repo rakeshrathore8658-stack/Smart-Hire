@@ -84,6 +84,55 @@ public class AuthService {
     }
 
     /**
+     * Authenticates or automatically creates an account for Google Sign-In.
+     */
+    @Transactional
+    public User loginOrRegisterWithGoogle(String email, String fullName, String requestedRole, String googleId, String avatarUrl) {
+        if (email == null || email.isBlank()) {
+            throw new IllegalArgumentException("Google account email cannot be empty.");
+        }
+        String normalizedEmail = email.trim().toLowerCase();
+        Optional<User> existingOpt = userRepository.findByEmail(normalizedEmail);
+
+        if (existingOpt.isPresent()) {
+            User user = existingOpt.get();
+            if ((user.getFullName() == null || user.getFullName().isBlank() || "User Account".equalsIgnoreCase(user.getFullName()))
+                    && fullName != null && !fullName.isBlank()) {
+                user.setFullName(fullName.trim());
+                userRepository.save(user);
+            }
+            return user;
+        }
+
+        // New user: auto-register with requested role
+        String assignedRole = (requestedRole != null && !requestedRole.isBlank())
+                ? requestedRole.trim().toUpperCase()
+                : "USER";
+        if ("RECRUITER".equalsIgnoreCase(assignedRole)) {
+            assignedRole = "HR";
+        }
+
+        User newUser = new User();
+        newUser.setFullName((fullName != null && !fullName.isBlank()) ? fullName.trim() : "Google User");
+        newUser.setEmail(normalizedEmail);
+        newUser.setPasswordHash(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
+        newUser.setRole(assignedRole);
+        newUser.setCareerRole("HR".equalsIgnoreCase(assignedRole) ? "HR / Recruiter" : "Job Seeker");
+        newUser.setTermsAccepted(true);
+        newUser.setTourCompleted(false);
+        newUser.setTourSkipped(false);
+        newUser.setTourSeen(false);
+        newUser.setTourLastStep(0);
+        newUser.setThemePreference("light");
+        newUser.setNotifResumeScan(true);
+        newUser.setNotifJobInsights(true);
+        newUser.setNotifInterviewUpdates(true);
+        newUser.setCreatedAt(java.time.LocalDateTime.now());
+
+        return userRepository.save(newUser);
+    }
+
+    /**
      * Verifies user password credentials against the stored bcrypt hash.
      */
     public Optional<User> authenticate(String email, String rawPassword) {

@@ -90,6 +90,20 @@ export const AuthProvider = ({ children }) => {
     throw new Error(response.data?.message || 'Registration failed');
   };
 
+  const loginWithGoogle = async (googleData) => {
+    const response = await api.post('/auth/google', googleData);
+    if (response.data && response.data.success && response.data.user) {
+      const u = response.data.user;
+      setUser(u);
+      saveUserSession(u);
+      if (u.themePreference) {
+        setTheme(u.themePreference, false);
+      }
+      return response.data;
+    }
+    throw new Error(response.data?.message || 'Google authentication failed');
+  };
+
   const logout = async () => {
     try {
       await api.post('/auth/logout');
@@ -120,6 +134,7 @@ export const AuthProvider = ({ children }) => {
         loading,
         login,
         register,
+        loginWithGoogle,
         logout,
         updateUser,
         refreshUser: fetchCurrentUser,

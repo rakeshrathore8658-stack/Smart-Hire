@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
+import ConfirmPopover from '../../components/common/ConfirmPopover';
 
 const JobManagement = () => {
   const [jobs, setJobs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingJob, setEditingJob] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   // Form State
   const [title, setTitle] = useState('');
@@ -99,13 +101,12 @@ const JobManagement = () => {
     }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this job vacancy?')) return;
+  const executeDelete = async (id) => {
     try {
       await api.delete(`/jobs/${id}`);
       fetchJobs();
     } catch (err) {
-      alert('Failed to delete job.');
+      console.error('Failed to delete job:', err);
     }
   };
 
@@ -188,7 +189,15 @@ const JobManagement = () => {
                       </button>
                       <button
                         type="button"
-                        onClick={() => handleDelete(job.id)}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDeleteConfirm({
+                            anchorEl: e.currentTarget,
+                            id: job.id,
+                            title: job.title || 'Job Vacancy',
+                          });
+                        }}
                         style={{ padding: '6px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 'var(--radius-sm)', color: '#dc2626', cursor: 'pointer', fontSize: '0.8rem', fontWeight: 600 }}
                       >
                         <i className="bi bi-trash"></i>
@@ -379,6 +388,22 @@ const JobManagement = () => {
             </form>
           </div>
         </div>
+      )}
+      {/* Popover Action Confirmation */}
+      {deleteConfirm && (
+        <ConfirmPopover
+          anchorEl={deleteConfirm.anchorEl}
+          title="Delete Job Vacancy?"
+          message={`Are you sure you want to permanently delete the vacancy for "${deleteConfirm.title}"?`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          danger={true}
+          onConfirm={() => {
+            executeDelete(deleteConfirm.id);
+            setDeleteConfirm(null);
+          }}
+          onClose={() => setDeleteConfirm(null)}
+        />
       )}
     </div>
   );

@@ -174,14 +174,10 @@ export default function CandidateComparisonModal({ candidateIds, onClose, onRemo
   };
 
   const handleRemoveOne = (id) => {
-    if (candidates.length <= 2) {
-      if (window.confirm('Removing this candidate will leave only 1 candidate, closing the comparison. Continue?')) {
-        onRemoveCandidate(id);
-        onClose();
-      }
-      return;
-    }
     onRemoveCandidate(id);
+    if (candidates.length <= 2) {
+      onClose();
+    }
   };
 
   return (

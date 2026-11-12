@@ -283,6 +283,54 @@ public class DashboardApiController {
                 }
             }
 
+            // If an HR / Recruiter deletes a candidate's resume, notify the candidate with dynamic message and HR name
+            boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
+            if (isHr) {
+                String hrName = (currentUser.getFullName() != null && !currentUser.getFullName().isBlank())
+                        ? currentUser.getFullName()
+                        : "HR Recruitment Team";
+
+                String candidateTargetEmail = null;
+                if (analysis.getUser() != null && analysis.getUser().getEmail() != null) {
+                    candidateTargetEmail = analysis.getUser().getEmail();
+                } else if (resume != null && resume.getUser() != null && resume.getUser().getEmail() != null) {
+                    candidateTargetEmail = resume.getUser().getEmail();
+                } else if (analysis.getCandidateEmailNormalized() != null && !analysis.getCandidateEmailNormalized().isBlank()) {
+                    candidateTargetEmail = analysis.getCandidateEmailNormalized();
+                } else if (analysis.getCandidateEmail() != null && !analysis.getCandidateEmail().isBlank()) {
+                    candidateTargetEmail = analysis.getCandidateEmail();
+                }
+
+                if (candidateTargetEmail != null && !candidateTargetEmail.isBlank()) {
+                    String dynamicMsg = "Your resume application for '" + role + "' has been removed from candidate review by HR Recruiter " + hrName + ".";
+                    try {
+                        notificationService.sendEnrichedNotification(
+                                candidateTargetEmail,
+                                candName,
+                                "Application Removed by HR (" + hrName + ")",
+                                dynamicMsg,
+                                "APPLICATION",
+                                "/dashboard/history",
+                                id,
+                                "RESUME_ANALYSIS",
+                                role,
+                                "DELETE",
+                                analysis.getStage() != null ? analysis.getStage() : "Under Review",
+                                "REMOVED",
+                                hrName,
+                                null,
+                                null,
+                                null,
+                                null,
+                                "Application profile removed by " + hrName
+                        );
+                        log.info("Dispatched candidate notification for resume deletion by HR [{}]: candidate=[{}]", hrName, candidateTargetEmail);
+                    } catch (Exception notifEx) {
+                        log.warn("Failed to dispatch deletion notification to candidate: {}", notifEx.getMessage());
+                    }
+                }
+            }
+
             log.info("Deleting ResumeAnalysis record [id={}] for candidate [{}] and role [{}]", id, candName, role);
 
             resumeAnalysisRepository.delete(analysis);

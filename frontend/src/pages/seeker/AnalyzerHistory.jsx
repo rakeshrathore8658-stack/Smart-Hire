@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import CustomSelect from '../../components/common/CustomSelect';
+import ConfirmPopover from '../../components/common/ConfirmPopover';
 import EmptyState from '../../components/common/EmptyState';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import useRealtimeSync from '../../hooks/useRealtimeSync';
@@ -16,6 +17,7 @@ const AnalyzerHistory = () => {
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedScore, setSelectedScore] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const fetchHistory = useCallback(async () => {
     try {
@@ -63,10 +65,7 @@ const AnalyzerHistory = () => {
     ])
   );
 
-  const handleDelete = async (id, e) => {
-    e.preventDefault();
-    if (!window.confirm('Delete this resume analysis record permanently from the database?')) return;
-
+  const executeDelete = async (id) => {
     try {
       const res = await api.delete(`/dashboard/history/${id}`);
       setAnalysesList((prev) => prev.filter((item) => item.id !== id));
@@ -81,7 +80,8 @@ const AnalyzerHistory = () => {
         setTimeout(() => setSuccessMessage(''), 3500);
       } catch (fallbackErr) {
         console.error('Delete failed:', fallbackErr);
-        alert(fallbackErr.response?.data?.message || err.response?.data?.message || 'Failed to delete record from database.');
+        setSuccessMessage(fallbackErr.response?.data?.message || err.response?.data?.message || 'Failed to delete record from database.');
+        setTimeout(() => setSuccessMessage(''), 3500);
       }
     }
   };
@@ -328,7 +328,15 @@ const AnalyzerHistory = () => {
                             className="btn btn-ghost btn-sm"
                             style={{ color: 'var(--danger)' }}
                             title="Delete Record"
-                            onClick={(e) => handleDelete(item.id, e)}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              setDeleteConfirm({
+                                anchorEl: e.currentTarget,
+                                id: item.id,
+                                name: item.resumeFileName || item.targetJobRole || 'Analysis',
+                              });
+                            }}
                           >
                             <i className="bi bi-trash"></i>
                           </button>
@@ -390,6 +398,23 @@ const AnalyzerHistory = () => {
           </div>
         </div>
       </article>
+
+      {/* Popover Action Confirmation (Replaces native browser window.confirm) */}
+      {deleteConfirm && (
+        <ConfirmPopover
+          anchorEl={deleteConfirm.anchorEl}
+          title="Delete Resume Record?"
+          message={`Are you sure you want to permanently delete "${deleteConfirm.name}" from your analysis history?`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          danger={true}
+          onConfirm={() => {
+            executeDelete(deleteConfirm.id);
+            setDeleteConfirm(null);
+          }}
+          onClose={() => setDeleteConfirm(null)}
+        />
+      )}
     </div>
   );
 };

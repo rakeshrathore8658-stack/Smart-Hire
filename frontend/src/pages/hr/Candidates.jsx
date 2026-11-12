@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import CustomSelect from '../../components/common/CustomSelect';
+import ConfirmPopover from '../../components/common/ConfirmPopover';
 import EmptyState from '../../components/common/EmptyState';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import { useAuth } from '../../context/AuthContext';
@@ -21,6 +22,7 @@ const Candidates = () => {
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   // Bulk Upload & Batch Screening States
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -162,23 +164,23 @@ const Candidates = () => {
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  const handleDeleteCandidate = async (id, name, e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!window.confirm(`Are you sure you want to permanently delete candidate "${name || 'Candidate'}" and their resume from the database?`)) return;
-
+  const executeDeleteCandidate = async (id, name) => {
     try {
       const res = await api.delete(`/dashboard/candidates/${id}`);
       setCandidates((prev) => prev.filter((c) => c.id !== id));
-      alert(res.data?.message || 'Candidate and resume record deleted successfully from database.');
+      setActionSuccess(res.data?.message || `Candidate "${name || 'Candidate'}" removed successfully from database.`);
+      setTimeout(() => setActionSuccess(''), 4500);
     } catch (err) {
-      console.error('Delete candidate failed:', err);
+      console.error('Delete candidate failed via dashboard endpoint:', err);
       try {
         const res = await api.delete(`/analysis/${id}`);
         setCandidates((prev) => prev.filter((c) => c.id !== id));
-        alert(res.data?.message || 'Candidate record deleted successfully from database.');
+        setActionSuccess(res.data?.message || `Candidate "${name || 'Candidate'}" removed successfully.`);
+        setTimeout(() => setActionSuccess(''), 4500);
       } catch (fallbackErr) {
-        alert(fallbackErr.response?.data?.message || err.response?.data?.message || 'Failed to delete candidate record from database.');
+        console.error('Delete fallback failed:', fallbackErr);
+        setActionSuccess(fallbackErr.response?.data?.message || err.response?.data?.message || 'Failed to delete candidate.');
+        setTimeout(() => setActionSuccess(''), 4500);
       }
     }
   };
@@ -596,7 +598,15 @@ const Candidates = () => {
                           className="btn btn-ghost btn-sm"
                           style={{ color: 'var(--danger)', padding: '4px 8px' }}
                           title="Delete Candidate Record"
-                          onClick={(e) => handleDeleteCandidate(cand.id, cand.candidateName, e)}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDeleteConfirm({
+                              anchorEl: e.currentTarget,
+                              id: cand.id,
+                              name: cand.candidateName || 'Candidate',
+                            });
+                          }}
                         >
                           <i className="bi bi-trash"></i>
                         </button>
@@ -1522,6 +1532,22 @@ const Candidates = () => {
             )}
           </div>
         </div>
+      )}
+      {/* Popover Action Confirmation (Replaces native browser window.confirm) */}
+      {deleteConfirm && (
+        <ConfirmPopover
+          anchorEl={deleteConfirm.anchorEl}
+          title="Delete Candidate?"
+          message={`Are you sure you want to permanently delete "${deleteConfirm.name}" and their resume from the database?`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          danger={true}
+          onConfirm={() => {
+            executeDeleteCandidate(deleteConfirm.id, deleteConfirm.name);
+            setDeleteConfirm(null);
+          }}
+          onClose={() => setDeleteConfirm(null)}
+        />
       )}
     </div>
   );

@@ -237,6 +237,68 @@ public class AuthApiController {
         ));
     }
 
+    /**
+     * Google Sign-In & One-Tap Authentication endpoint for Job Seekers and HR Recruiters.
+     */
+    @PostMapping("/google")
+    public ResponseEntity<?> googleAuth(
+            @RequestBody(required = false) Map<String, Object> body,
+            HttpServletRequest request,
+            HttpServletResponse response,
+            HttpSession session
+    ) {
+        if (body == null) body = Collections.emptyMap();
+
+        String credential = (String) body.get("credential");
+        String email = (String) body.get("email");
+        String name = (String) body.get("name");
+        String requestedRole = (String) body.get("role");
+        String googleId = (String) body.get("googleId");
+        String avatarUrl = (String) body.get("avatarUrl");
+
+        // If credential JWT from Google Identity Services is provided, decode payload
+        if (credential != null && !credential.isBlank() && (email == null || email.isBlank())) {
+            try {
+                String[] parts = credential.split("\\.");
+                if (parts.length >= 2) {
+                    String payloadJson = new String(java.util.Base64.getUrlDecoder().decode(parts[1]), java.nio.charset.StandardCharsets.UTF_8);
+                    com.fasterxml.jackson.databind.JsonNode root = new com.fasterxml.jackson.databind.ObjectMapper().readTree(payloadJson);
+                    if (root.has("email")) email = root.get("email").asText();
+                    if (root.has("name") && (name == null || name.isBlank())) name = root.get("name").asText();
+                    if (root.has("sub") && (googleId == null || googleId.isBlank())) googleId = root.get("sub").asText();
+                    if (root.has("picture") && (avatarUrl == null || avatarUrl.isBlank())) avatarUrl = root.get("picture").asText();
+                }
+            } catch (Exception ex) {
+                log.warn("Could not decode Google ID token payload: {}", ex.getMessage());
+            }
+        }
+
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Google account email is required."
+            ));
+        }
+
+        try {
+            User user = authService.loginOrRegisterWithGoogle(email, name, requestedRole, googleId, avatarUrl);
+            String activeRole = user.getRole() != null ? user.getRole().toUpperCase() : "USER";
+            establishSession(request, response, session, user, activeRole);
+
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Google authentication successful",
+                    "user", mapUser(user)
+            ));
+        } catch (Exception ex) {
+            log.error("Google authentication error: ", ex);
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                    "success", false,
+                    "message", "Google authentication failed: " + ex.getMessage()
+            ));
+        }
+    }
+
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> body) {
         String email = body.get("email");

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import CustomSelect from '../../components/common/CustomSelect';
+import ConfirmPopover from '../../components/common/ConfirmPopover';
 import EmptyState from '../../components/common/EmptyState';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import useRealtimeSync from '../../hooks/useRealtimeSync';
@@ -14,6 +15,7 @@ const Applications = () => {
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const fetchApps = useCallback(async () => {
     try {
@@ -59,25 +61,23 @@ const Applications = () => {
     setTimeout(() => setSuccessMessage(''), 3000);
   };
 
-  const handleDeleteApp = async (id, name, e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (!window.confirm(`Are you sure you want to permanently delete application for "${name || 'Candidate'}" from database?`)) return;
-
+  const executeDeleteApp = async (id, name) => {
     try {
       const res = await api.delete(`/dashboard/applications/${id}`);
       setApplications((prev) => prev.filter((app) => app.id !== id));
-      setSuccessMessage(res.data?.message || 'Application and resume deleted successfully.');
-      setTimeout(() => setSuccessMessage(''), 3500);
+      setSuccessMessage(res.data?.message || `Application for "${name || 'Candidate'}" removed successfully.`);
+      setTimeout(() => setSuccessMessage(''), 4000);
     } catch (err) {
-      console.error('Delete application failed:', err);
+      console.error('Delete application failed via dashboard endpoint:', err);
       try {
         const res = await api.delete(`/analysis/${id}`);
         setApplications((prev) => prev.filter((app) => app.id !== id));
-        setSuccessMessage(res.data?.message || 'Application deleted successfully.');
-        setTimeout(() => setSuccessMessage(''), 3500);
+        setSuccessMessage(res.data?.message || `Application for "${name || 'Candidate'}" removed successfully.`);
+        setTimeout(() => setSuccessMessage(''), 4000);
       } catch (fallbackErr) {
-        alert(fallbackErr.response?.data?.message || err.response?.data?.message || 'Failed to delete application from database.');
+        console.error('Delete fallback failed:', fallbackErr);
+        setSuccessMessage(fallbackErr.response?.data?.message || err.response?.data?.message || 'Failed to delete application.');
+        setTimeout(() => setSuccessMessage(''), 4000);
       }
     }
   };
@@ -362,7 +362,15 @@ const Applications = () => {
                           className="btn btn-ghost btn-sm"
                           style={{ color: 'var(--danger)', padding: '4px 8px' }}
                           title="Delete Application Record"
-                          onClick={(e) => handleDeleteApp(cand.id, cand.candidateName, e)}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setDeleteConfirm({
+                              anchorEl: e.currentTarget,
+                              id: cand.id,
+                              name: cand.candidateName || 'Candidate',
+                            });
+                          }}
                         >
                           <i className="bi bi-trash"></i>
                         </button>
@@ -388,6 +396,23 @@ const Applications = () => {
           />
         )}
       </article>
+
+      {/* Popover Action Confirmation (Replaces native browser window.confirm) */}
+      {deleteConfirm && (
+        <ConfirmPopover
+          anchorEl={deleteConfirm.anchorEl}
+          title="Delete Application?"
+          message={`Are you sure you want to permanently delete the application for "${deleteConfirm.name}" from database?`}
+          confirmText="Delete"
+          cancelText="Cancel"
+          danger={true}
+          onConfirm={() => {
+            executeDeleteApp(deleteConfirm.id, deleteConfirm.name);
+            setDeleteConfirm(null);
+          }}
+          onClose={() => setDeleteConfirm(null)}
+        />
+      )}
     </div>
   );
 };

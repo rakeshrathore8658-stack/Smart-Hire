@@ -4,6 +4,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useOnboarding } from '../context/OnboardingContext';
 import api from '../api/client';
+import ConfirmPopover from '../components/common/ConfirmPopover';
 
 const Settings = () => {
   const { theme, setTheme, isDark } = useTheme();
@@ -23,6 +24,7 @@ const Settings = () => {
 
   // Status banners
   const [successMessage, setSuccessMessage] = useState('');
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
   const [errorMessage, setErrorMessage] = useState('');
   const [loadingPassword, setLoadingPassword] = useState(false);
   const [loadingPrefs, setLoadingPrefs] = useState(false);
@@ -518,7 +520,10 @@ const Settings = () => {
               <button
                 type="button"
                 className="btn btn-secondary btn-sm"
-                onClick={() => alert('Export data archive requested. Your archive is being compiled.')}
+                onClick={() => {
+                  setSuccessMessage('Export data archive requested. Your archive is being compiled.');
+                  setTimeout(() => setSuccessMessage(''), 4000);
+                }}
               >
                 <i className="bi bi-download"></i> Download My Data Archive
               </button>
@@ -545,10 +550,12 @@ const Settings = () => {
                 width: '100%',
                 fontWeight: 700,
               }}
-              onClick={() => {
-                if (window.confirm('Are you sure you want to delete your account? This action cannot be undone.')) {
-                  alert('Account deletion requested. Please contact administrator.');
-                }
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setDeleteConfirm({
+                  anchorEl: e.currentTarget,
+                });
               }}
             >
               Delete Account
@@ -556,6 +563,24 @@ const Settings = () => {
           </article>
         </aside>
       </div>
+
+      {/* Popover Action Confirmation */}
+      {deleteConfirm && (
+        <ConfirmPopover
+          anchorEl={deleteConfirm.anchorEl}
+          title="Delete Account?"
+          message="Are you sure you want to delete your account? This action cannot be undone."
+          confirmText="Delete Account"
+          cancelText="Cancel"
+          danger={true}
+          onConfirm={() => {
+            setDeleteConfirm(null);
+            setSuccessMessage('Account deletion requested. Please contact administrator.');
+            setTimeout(() => setSuccessMessage(''), 5000);
+          }}
+          onClose={() => setDeleteConfirm(null)}
+        />
+      )}
     </div>
   );
 };
