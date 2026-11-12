@@ -38,22 +38,27 @@
     <script>
         var isProd = window.location.hostname.includes("onrender.com") || (!window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1"));
         var base = isProd ? "https://resume-analyzer-sigma-nine.vercel.app" : "http://localhost:5173";
-        // If arrived via error redirect, redirect to frontend login after brief pause
-        setTimeout(function() {
-            window.location.replace(base + "/login" + window.location.search);
-        }, 1500);
+        var search = window.location.search || "";
+        if (search.includes("code=") || search.includes("state=") || !search) {
+            search = "?oauth_error=" + encodeURIComponent("Google authentication encountered an issue. Please try signing in again.");
+        }
+        window.location.replace(base + "/login" + search);
     </script>
 </head>
 <body>
     <div class="card">
         <h1 th:text="${errorTitle != null ? errorTitle : 'SmartHire Notice'}">SmartHire Notice</h1>
-        <p th:text="${errorMessage != null ? errorMessage : 'The requested resource is managed by the SmartHire Web Application.'}">Notice details</p>
+        <p th:text="${errorMessage != null ? errorMessage : 'Redirecting to SmartHire Web Application...'}">Notice details</p>
         <a id="returnBtn" class="btn" href="http://localhost:5173/">Return to SmartHire &rarr;</a>
     </div>
     <script>
         var isProd = window.location.hostname.includes("onrender.com") || (!window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1"));
         var base = isProd ? "https://resume-analyzer-sigma-nine.vercel.app" : "http://localhost:5173";
-        document.getElementById("returnBtn").href = base + "/login" + window.location.search;
+        var search = window.location.search || "";
+        if (search.includes("code=") || search.includes("state=") || !search) {
+            search = "?oauth_error=" + encodeURIComponent("Google authentication encountered an issue. Please try signing in again.");
+        }
+        document.getElementById("returnBtn").href = base + "/login" + search;
     </script>
 </body>
 </html>

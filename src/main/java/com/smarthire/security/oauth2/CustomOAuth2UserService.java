@@ -68,22 +68,27 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         ServletRequestAttributes attributes = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
         if (attributes != null) {
             HttpServletRequest request = attributes.getRequest();
+
+            // 1. Check HTTP session (populated by CustomOAuth2AuthorizationRequestResolver)
+            HttpSession session = request.getSession(false);
+            if (session != null && session.getAttribute("oauth2_requested_role") != null) {
+                String role = (String) session.getAttribute("oauth2_requested_role");
+                if (role != null && !role.isBlank()) {
+                    return role.trim().toUpperCase();
+                }
+            }
+
+            // 2. Check query parameter
             String roleParam = request.getParameter("role");
             if (roleParam != null && !roleParam.isBlank()) {
                 return roleParam.trim().toUpperCase();
             }
 
-            // Check session
-            HttpSession session = request.getSession(false);
-            if (session != null && session.getAttribute("oauth2_requested_role") != null) {
-                return (String) session.getAttribute("oauth2_requested_role");
-            }
-
-            // Check cookies
+            // 3. Check cookies
             Cookie[] cookies = request.getCookies();
             if (cookies != null) {
                 for (Cookie cookie : cookies) {
-                    if ("smarthire_oauth_role".equals(cookie.getName()) && cookie.getValue() != null) {
+                    if ("smarthire_oauth_role".equals(cookie.getName()) && cookie.getValue() != null && !cookie.getValue().isBlank()) {
                         return cookie.getValue().trim().toUpperCase();
                     }
                 }

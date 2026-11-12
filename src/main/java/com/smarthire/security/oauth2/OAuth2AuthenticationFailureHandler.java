@@ -40,10 +40,25 @@ public class OAuth2AuthenticationFailureHandler extends SimpleUrlAuthenticationF
 
         String targetOrigin = resolveFrontendOrigin(request);
         String errorMsg = exception.getMessage() != null ? exception.getMessage() : "Google authentication failed. Please try again.";
+        if (exception.getCause() != null && exception.getCause().getMessage() != null && !exception.getCause().getMessage().isBlank()) {
+            errorMsg = exception.getCause().getMessage();
+        }
+
         String encodedError = URLEncoder.encode(errorMsg, StandardCharsets.UTF_8);
 
-        String targetUrl = targetOrigin + "/login?oauth_error=" + encodedError;
-        getRedirectStrategy().sendRedirect(request, response, targetUrl);
+        // Retrieve requested role from session if available
+        String role = "USER";
+        jakarta.servlet.http.HttpSession session = request.getSession(false);
+        if (session != null && session.getAttribute("oauth2_requested_role") != null) {
+            role = (String) session.getAttribute("oauth2_requested_role");
+        }
+
+        String targetUrl = targetOrigin + "/login?role=" + role + "&oauth_error=" + encodedError;
+
+        log.info("Redirecting failed OAuth2 authentication to frontend: '{}'", targetUrl);
+
+        response.setStatus(HttpServletResponse.SC_FOUND);
+        response.setHeader(org.springframework.http.HttpHeaders.LOCATION, targetUrl);
     }
 
     private String resolveFrontendOrigin(HttpServletRequest request) {

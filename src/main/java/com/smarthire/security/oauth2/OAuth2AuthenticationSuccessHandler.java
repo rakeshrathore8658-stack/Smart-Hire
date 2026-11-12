@@ -149,17 +149,24 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
             log.info("Google OAuth2 login successful for user '{}' with role '{}'. Redirecting directly to dashboard: '{}'",
                     user.getEmail(), activeRole, targetUrl);
 
-            getRedirectStrategy().sendRedirect(request, response, targetUrl);
+            response.setStatus(HttpServletResponse.SC_FOUND);
+            response.setHeader(org.springframework.http.HttpHeaders.LOCATION, targetUrl);
             return;
         }
 
         // Fallback: Redirect to frontend login with error instead of port 8080 Whitelabel
         String targetOrigin = resolveFrontendOrigin(request);
         String targetUrl = targetOrigin + "/login?error=" + URLEncoder.encode("Authentication failed. Please try again.", StandardCharsets.UTF_8);
-        getRedirectStrategy().sendRedirect(request, response, targetUrl);
+        response.setStatus(HttpServletResponse.SC_FOUND);
+        response.setHeader(org.springframework.http.HttpHeaders.LOCATION, targetUrl);
     }
 
     private String resolveRequestedRole(HttpServletRequest request) {
+        HttpSession session = request.getSession(false);
+        if (session != null && session.getAttribute("oauth2_requested_role") != null) {
+            String role = (String) session.getAttribute("oauth2_requested_role");
+            if (role != null && !role.isBlank()) return role.trim().toUpperCase();
+        }
         String roleParam = request.getParameter("role");
         if (roleParam != null && !roleParam.isBlank()) {
             return roleParam.trim().toUpperCase();
@@ -175,6 +182,15 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
     }
 
     public String resolveFrontendOrigin(HttpServletRequest request) {
+        // 0. Check session
+        HttpSession session = request.getSession(false);
+        if (session != null && session.getAttribute("oauth2_requested_origin") != null) {
+            String orig = (String) session.getAttribute("oauth2_requested_origin");
+            if (orig != null && !orig.isBlank() && isValidOrigin(orig)) {
+                return orig.trim().replaceAll("/+$", "");
+            }
+        }
+
         // 1. Check if frontend set smarthire_oauth_origin cookie
         if (request.getCookies() != null) {
             for (Cookie c : request.getCookies()) {

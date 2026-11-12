@@ -38,19 +38,22 @@ public class SecurityConfig {
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
     private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
+    private final org.springframework.security.oauth2.client.registration.ClientRegistrationRepository clientRegistrationRepository;
 
     public SecurityConfig(
             CustomUserDetailsService userDetailsService,
             PasswordEncoder passwordEncoder,
             CustomOAuth2UserService customOAuth2UserService,
             OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler,
-            OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler)
+            OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) org.springframework.security.oauth2.client.registration.ClientRegistrationRepository clientRegistrationRepository)
     {
         this.userDetailsService = userDetailsService;
         this.passwordEncoder = passwordEncoder;
         this.customOAuth2UserService = customOAuth2UserService;
         this.oAuth2AuthenticationSuccessHandler = oAuth2AuthenticationSuccessHandler;
         this.oAuth2AuthenticationFailureHandler = oAuth2AuthenticationFailureHandler;
+        this.clientRegistrationRepository = clientRegistrationRepository;
     }
 
     @Bean
@@ -224,20 +227,25 @@ public class SecurityConfig {
                 )
 
                 // Real Google OAuth 2.0 Login
-                .oauth2Login(oauth2 -> oauth2
-                        .loginPage("/login")
-                        .authorizationEndpoint(auth -> auth
-                                .baseUri("/oauth2/authorization")
-                        )
-                        .redirectionEndpoint(redir -> redir
-                                .baseUri("/login/oauth2/code/*")
-                        )
-                        .userInfoEndpoint(userInfo -> userInfo
-                                .userService(customOAuth2UserService)
-                        )
-                        .successHandler(oAuth2AuthenticationSuccessHandler)
-                        .failureHandler(oAuth2AuthenticationFailureHandler)
-                )
+                .oauth2Login(oauth2 -> {
+                    oauth2.loginPage("/login");
+                    oauth2.authorizationEndpoint(auth -> {
+                        auth.baseUri("/oauth2/authorization");
+                        if (clientRegistrationRepository != null) {
+                            auth.authorizationRequestResolver(
+                                    new com.smarthire.security.oauth2.CustomOAuth2AuthorizationRequestResolver(clientRegistrationRepository)
+                            );
+                        }
+                    });
+                    oauth2.redirectionEndpoint(redir -> redir
+                            .baseUri("/login/oauth2/code/*")
+                    );
+                    oauth2.userInfoEndpoint(userInfo -> userInfo
+                            .userService(customOAuth2UserService)
+                    );
+                    oauth2.successHandler(oAuth2AuthenticationSuccessHandler);
+                    oauth2.failureHandler(oAuth2AuthenticationFailureHandler);
+                })
 
                 // Server-side session
                 .sessionManagement(session -> session
