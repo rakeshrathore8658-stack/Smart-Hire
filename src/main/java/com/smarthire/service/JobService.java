@@ -18,7 +18,6 @@ public class JobService {
     }
 
     public List<Job> getAllJobs() {
-        ensureDefaultJobs();
         return jobRepository.findAllByOrderByCreatedAtDesc();
     }
 

@@ -45,8 +45,6 @@ public class ReportService {
     }
 
     public RecruitmentReportDTO generateReport(String period) {
-        jobService.ensureDefaultJobs();
-
         List<Job> allJobs = jobRepository.findAllByOrderByCreatedAtDesc();
         List<ResumeAnalysis> allAnalyses = resumeAnalysisRepository.findAllByOrderByCreatedAtDesc();
 

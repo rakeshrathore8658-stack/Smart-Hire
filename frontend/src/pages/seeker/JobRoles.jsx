@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/client';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 
 const JobRoles = () => {
   const { isHr } = useAuth();
@@ -9,105 +10,8 @@ const JobRoles = () => {
   const [selectedDomain, setSelectedDomain] = useState('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [loading, setLoading] = useState(true);
-
-  const defaultJobRoles = [
-    {
-      id: 1,
-      title: 'Java Developer',
-      domainCode: 'software',
-      domainLabel: 'Software Engineering',
-      status: 'Open',
-      targetAtsScore: '80%+',
-      minExperience: 2,
-      maxExperience: 5,
-      location: 'Remote / Hybrid',
-      iconClass: 'bi-filetype-java',
-      iconColor: 'var(--accent)',
-      description:
-        'Design, build, and maintain high-performance, robust server-side applications using Java, Spring Boot, and microservice architectures.',
-      skillsList: ['Java', 'Spring Boot', 'Hibernate', 'REST APIs', 'SQL', 'Git'],
-    },
-    {
-      id: 2,
-      title: 'Spring Boot Developer',
-      domainCode: 'software',
-      domainLabel: 'Software Engineering',
-      status: 'Open',
-      targetAtsScore: '82%+',
-      minExperience: 3,
-      maxExperience: 6,
-      location: 'Bengaluru / Remote',
-      iconClass: 'bi-layers',
-      iconColor: 'var(--accent)',
-      description:
-        'Develop enterprise-grade cloud-native RESTful microservices, optimize persistence layers, and integrate secure Spring Security OAuth2 flows.',
-      skillsList: ['Spring Boot', 'Microservices', 'Docker', 'PostgreSQL', 'Kafka', 'JUnit'],
-    },
-    {
-      id: 3,
-      title: 'Full Stack MERN Developer',
-      domainCode: 'software',
-      domainLabel: 'Software Engineering',
-      status: 'Open',
-      targetAtsScore: '78%+',
-      minExperience: 2,
-      maxExperience: 5,
-      location: 'Indore / Hybrid',
-      iconClass: 'bi-code-slash',
-      iconColor: 'var(--primary)',
-      description:
-        'Deliver end-to-end full stack web platforms using React, Node.js, Express, MongoDB, and modern UI/UX design patterns.',
-      skillsList: ['React.js', 'Node.js', 'Express', 'MongoDB', 'JavaScript', 'CSS3'],
-    },
-    {
-      id: 4,
-      title: 'Cloud & DevOps Architect',
-      domainCode: 'cloud',
-      domainLabel: 'Cloud & DevOps',
-      status: 'Open',
-      targetAtsScore: '85%+',
-      minExperience: 4,
-      maxExperience: 8,
-      location: 'Pune / Remote',
-      iconClass: 'bi-cloud',
-      iconColor: 'var(--info)',
-      description:
-        'Architect, automate, and monitor scalable cloud infrastructure across AWS, Kubernetes, Terraform, and CI/CD pipelines.',
-      skillsList: ['AWS', 'Docker', 'Kubernetes', 'Terraform', 'CI/CD', 'Linux'],
-    },
-    {
-      id: 5,
-      title: 'AI & Machine Learning Engineer',
-      domainCode: 'data',
-      domainLabel: 'Data & AI',
-      status: 'Open',
-      targetAtsScore: '80%+',
-      minExperience: 2,
-      maxExperience: 5,
-      location: 'Remote',
-      iconClass: 'bi-robot',
-      iconColor: 'var(--warning)',
-      description:
-        'Develop machine learning models, NLP analysis engines, LLM prompt workflows, and automated evaluation pipelines.',
-      skillsList: ['Python', 'PyTorch', 'LangChain', 'NLP', 'FastAPI', 'Docker'],
-    },
-    {
-      id: 6,
-      title: 'Data Analyst / Scientist',
-      domainCode: 'data',
-      domainLabel: 'Data & AI',
-      status: 'Open',
-      targetAtsScore: '80%+',
-      minExperience: 1,
-      maxExperience: 4,
-      location: 'Hyderabad / Remote',
-      iconClass: 'bi-database',
-      iconColor: 'var(--warning)',
-      description:
-        'Extract, transform, and model large datasets to derive predictive insights, business dashboards, and data metrics.',
-      skillsList: ['Python', 'SQL', 'Tableau', 'Pandas', 'Machine Learning', 'Power BI'],
-    },
-  ];
+  const [dbError, setDbError] = useState(false);
+  const [dbErrorMessage, setDbErrorMessage] = useState('');
 
   const mapDbJob = (job) => {
     let domainCode = 'software';
@@ -165,28 +69,30 @@ const JobRoles = () => {
     };
   };
 
-  useEffect(() => {
-    let isMounted = true;
-    const fetchJobs = async () => {
-      try {
-        const res = await api.get('/jobs');
-        const list = res.data?.jobs || (Array.isArray(res.data) ? res.data : []);
-        if (isMounted && list.length > 0) {
-          setJobs(list.map(mapDbJob));
-        } else {
-          setJobs(defaultJobRoles);
-        }
-      } catch (err) {
-        setJobs(defaultJobRoles);
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-    fetchJobs();
-    return () => {
-      isMounted = false;
-    };
+  const fetchJobs = useCallback(async () => {
+    setLoading(true);
+    setDbError(false);
+    setDbErrorMessage('');
+    try {
+      const res = await api.get('/jobs');
+      const list = res.data?.jobs || (Array.isArray(res.data) ? res.data : []);
+      setJobs(list.map(mapDbJob));
+    } catch (err) {
+      console.warn('Failed to load active jobs from database:', err);
+      setJobs([]);
+      setDbError(true);
+      setDbErrorMessage(
+        err.response?.data?.message ||
+        'Unable to connect to the database to fetch live job requisitions. The database may be offline or uninitialized.'
+      );
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    fetchJobs();
+  }, [fetchJobs]);
 
   const filteredJobs = jobs.filter((job) => {
     const matchesDomain = selectedDomain === 'all' || job.domainCode === selectedDomain;
@@ -317,7 +223,120 @@ const JobRoles = () => {
         id="rolesGrid"
         data-tour="roles-grid"
       >
-        {filteredJobs.length > 0 ? (
+        {loading ? (
+          <div style={{ gridColumn: '1 / -1' }}>
+            <SkeletonLoader type="card" count={4} />
+          </div>
+        ) : dbError ? (
+          <article
+            className="card"
+            style={{
+              gridColumn: '1 / -1',
+              padding: '48px 24px',
+              textAlign: 'center',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+            }}
+          >
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: 'rgba(239, 68, 68, 0.12)',
+                color: 'var(--danger)',
+                display: 'grid',
+                placeItems: 'center',
+                margin: '0 auto 16px',
+                fontSize: '1.8rem',
+              }}
+            >
+              <i className="bi bi-database-exclamation"></i>
+            </div>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '8px', color: 'var(--text-primary)' }}>
+              Database Connection Inactive
+            </h3>
+            <p style={{ maxWidth: '520px', margin: '0 auto 20px', color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              {dbErrorMessage || 'Unable to connect to the database to fetch live job requisitions. Please ensure the backend database is active and reachable.'}
+            </p>
+            <button
+              type="button"
+              className="btn btn-primary btn-sm"
+              onClick={fetchJobs}
+            >
+              <i className="bi bi-arrow-clockwise"></i> Retry Connection
+            </button>
+          </article>
+        ) : jobs.length === 0 ? (
+          <article
+            className="card"
+            style={{
+              gridColumn: '1 / -1',
+              padding: '48px 24px',
+              textAlign: 'center',
+              background: 'var(--bg-card)',
+              border: '1px solid var(--border-color)',
+            }}
+          >
+            <div
+              style={{
+                width: '64px',
+                height: '64px',
+                borderRadius: '50%',
+                background: 'rgba(255, 121, 0, 0.12)',
+                color: 'var(--accent)',
+                display: 'grid',
+                placeItems: 'center',
+                margin: '0 auto 16px',
+                fontSize: '1.8rem',
+              }}
+            >
+              <i className="bi bi-briefcase"></i>
+            </div>
+            <h3 style={{ fontSize: '1.2rem', fontWeight: 700, marginBottom: '8px', color: 'var(--text-primary)' }}>
+              No Active Job Requisitions
+            </h3>
+            <p style={{ maxWidth: '520px', margin: '0 auto 20px', color: 'var(--text-secondary)', fontSize: '0.9rem', lineHeight: 1.5 }}>
+              There are currently no job openings published in the database. New positions will appear here once posted by the recruitment team.
+            </p>
+            {isHr ? (
+              <Link to="/dashboard/jobs/create" className="btn btn-primary btn-sm">
+                <i className="bi bi-plus-lg"></i> Post New Job Opening
+              </Link>
+            ) : (
+              <Link to="/dashboard/resumeanalyzer" className="btn btn-primary btn-sm">
+                <i className="bi bi-cpu"></i> Analyze Resume Against Standard Profiles
+              </Link>
+            )}
+          </article>
+        ) : filteredJobs.length === 0 ? (
+          <div
+            style={{
+              gridColumn: '1 / -1',
+              padding: '60px 20px',
+              textAlign: 'center',
+              color: 'var(--text-muted)',
+            }}
+          >
+            <i className="bi bi-search" style={{ fontSize: '2.5rem', display: 'block', marginBottom: '12px' }}></i>
+            <h3 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', marginBottom: '6px' }}>
+              No Matching Job Openings Found
+            </h3>
+            <p style={{ fontSize: '0.88rem', marginBottom: '16px' }}>
+              Try adjusting your domain filter or search query.
+            </p>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              onClick={() => {
+                setSelectedDomain('all');
+                setSearchQuery('');
+              }}
+            >
+              Reset Filters
+            </button>
+          </div>
+        ) : (
           filteredJobs.map((job) => (
             <article
               key={job.id}
@@ -440,23 +459,6 @@ const JobRoles = () => {
               </div>
             </article>
           ))
-        ) : (
-          <div
-            style={{
-              gridColumn: '1 / -1',
-              padding: '60px 20px',
-              textAlign: 'center',
-              color: 'var(--text-muted)',
-            }}
-          >
-            <i className="bi bi-search" style={{ fontSize: '2.5rem', display: 'block', marginBottom: '12px' }}></i>
-            <h3 style={{ fontSize: '1.1rem', color: 'var(--text-primary)', marginBottom: '6px' }}>
-              No Job Openings Found
-            </h3>
-            <p style={{ fontSize: '0.88rem' }}>
-              Try adjusting your domain filter or search query.
-            </p>
-          </div>
         )}
       </div>
     </div>

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import api from '../../api/client';
+import SkeletonLoader from '../../components/common/SkeletonLoader';
 
 export default function JobDetails() {
   const { id } = useParams();
@@ -8,70 +9,100 @@ export default function JobDetails() {
   const [candidates, setCandidates] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  const fallbackJob = {
-    id: id || 1,
-    title: 'Senior Java Developer',
-    department: 'Engineering',
-    employmentType: 'Full-time',
-    location: 'Remote / Hybrid',
-    minExperience: 4,
-    maxExperience: 7,
-    salaryRange: '₹18,00,000 - ₹28,00,000',
-    openings: 2,
-    status: 'Open',
-    formattedDate: '18 Oct 2026',
-    requiredSkills: 'Java 17, Spring Boot, Microservices, PostgreSQL, Docker, AWS',
-    description: 'Designs scalable microservices for distributed cloud systems, maintains high automated test coverage, and optimizes database transaction latencies.',
-  };
-
-  const defaultAssociatedCandidates = [
-    {
-      id: 1,
-      candidateName: 'Vikram Sharma',
-      candidateEmail: 'vikram.s@email.com',
-      overallScore: 94,
-      targetJobRole: 'Senior Java Developer',
-      stage: 'Shortlisted',
-    },
-    {
-      id: 2,
-      candidateName: 'Anand Verma',
-      candidateEmail: 'anandpatel88170@gmail.com',
-      overallScore: 72,
-      targetJobRole: 'Spring Boot Developer',
-      stage: 'Under Review',
-    },
-    {
-      id: 3,
-      candidateName: 'Ramu Kushwah',
-      candidateEmail: 'kushwahramu2308@gmail.com',
-      overallScore: 66,
-      targetJobRole: 'Java Developer',
-      stage: 'Interviewing',
-    },
-  ];
-
   useEffect(() => {
+    let isMounted = true;
     const fetchData = async () => {
       try {
-        const [jobRes, candsRes] = await Promise.all([
-          api.get(`/jobs/${id}`).catch(() => ({ data: fallbackJob })),
-          api.get('/dashboard/applications').catch(() => ({ data: { applications: defaultAssociatedCandidates } })),
+        const [jobRes, candsRes] = await Promise.allSettled([
+          api.get(`/jobs/${id}`),
+          api.get('/dashboard/applications'),
         ]);
-        setJob(jobRes.data || fallbackJob);
-        const list = candsRes.data?.applications || (Array.isArray(candsRes.data) ? candsRes.data : defaultAssociatedCandidates);
-        setCandidates(list);
+
+        if (isMounted) {
+          if (jobRes.status === 'fulfilled' && jobRes.value?.data) {
+            setJob(jobRes.value.data);
+          } else {
+            setJob(null);
+          }
+
+          if (candsRes.status === 'fulfilled') {
+            const list = candsRes.value?.data?.applications || (Array.isArray(candsRes.value?.data) ? candsRes.value.data : []);
+            setCandidates(list);
+          } else {
+            setCandidates([]);
+          }
+        }
       } catch (err) {
-        setJob(fallbackJob);
-        setCandidates(defaultAssociatedCandidates);
+        if (isMounted) {
+          setJob(null);
+          setCandidates([]);
+        }
       } finally {
-        setLoading(false);
+        if (isMounted) setLoading(false);
       }
     };
     fetchData();
+    return () => {
+      isMounted = false;
+    };
   }, [id]);
 
-  const currentJob = job || fallbackJob;
+  if (loading) {
+    return (
+      <div>
+        <nav className="breadcrumb" style={{ marginBottom: '20px' }}>
+          <Link to="/dashboard">Dashboard</Link>
+          <span className="breadcrumb-separator">/</span>
+          <Link to="/dashboard/jobs">Jobs</Link>
+          <span className="breadcrumb-separator">/</span>
+          <span className="breadcrumb-current">Loading...</span>
+        </nav>
+        <SkeletonLoader type="card" count={3} />
+      </div>
+    );
+  }
+
+  if (!job) {
+    return (
+      <div>
+        <nav className="breadcrumb" style={{ marginBottom: '20px' }}>
+          <Link to="/dashboard">Dashboard</Link>
+          <span className="breadcrumb-separator">/</span>
+          <Link to="/dashboard/jobs">Jobs</Link>
+          <span className="breadcrumb-separator">/</span>
+          <span className="breadcrumb-current">Not Found</span>
+        </nav>
+        <article className="card" style={{ padding: '60px 24px', textAlign: 'center' }}>
+          <div
+            style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: 'rgba(239, 68, 68, 0.12)',
+              color: 'var(--danger)',
+              display: 'grid',
+              placeItems: 'center',
+              margin: '0 auto 16px',
+              fontSize: '1.8rem',
+            }}
+          >
+            <i className="bi bi-exclamation-triangle"></i>
+          </div>
+          <h3 style={{ fontSize: '1.25rem', fontWeight: 700, marginBottom: '8px', color: 'var(--text-primary)' }}>
+            Job Requisition Not Found
+          </h3>
+          <p style={{ maxWidth: '500px', margin: '0 auto 20px', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            The requested job requisition (#{id}) does not exist in the database or the database connection is currently unavailable.
+          </p>
+          <Link to="/dashboard/jobs" className="btn btn-primary btn-sm">
+            <i className="bi bi-arrow-left"></i> Back to Job Management
+          </Link>
+        </article>
+      </div>
+    );
+  }
+
+  const currentJob = job;
   const requiredSkillsList = currentJob.requiredSkills
     ? currentJob.requiredSkills.split(',').map((s) => s.trim())
     : ['Java', 'Spring Boot', 'SQL'];
