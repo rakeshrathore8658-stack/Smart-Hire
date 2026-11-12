@@ -30,11 +30,23 @@ public class SettingsApiController {
     private User getAuthenticatedUser() {
         String email = null;
         try {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
-                email = auth.getName();
+            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs != null && attrs.getRequest() != null) {
+                String h = attrs.getRequest().getHeader("X-User-Email");
+                if (h != null && !h.isBlank()) {
+                    email = h.trim().toLowerCase();
+                }
             }
         } catch (Exception ignored) {}
+
+        if (email == null) {
+            try {
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
+                    email = auth.getName();
+                }
+            } catch (Exception ignored) {}
+        }
 
         if (email == null) {
             try {
@@ -66,6 +78,8 @@ public class SettingsApiController {
         data.put("phoneNumber", user.getPhoneNumber());
         data.put("companyName", user.getCompanyName());
         data.put("careerRole", user.getCareerRole());
+        data.put("location", user.getLocation() != null ? user.getLocation() : "");
+        data.put("headline", user.getHeadline() != null ? user.getHeadline() : "");
         data.put("themePreference", user.getThemePreference() != null ? user.getThemePreference() : "light");
         data.put("notifResumeScan", user.isNotifResumeScan());
         data.put("notifJobInsights", user.isNotifJobInsights());
@@ -186,6 +200,12 @@ public class SettingsApiController {
             user.setCareerRole(body.get("careerRole").trim());
             if (session != null) session.setAttribute("careerRole", user.getCareerRole());
         }
+        if (body.get("location") != null) {
+            user.setLocation(body.get("location").trim());
+        }
+        if (body.get("headline") != null) {
+            user.setHeadline(body.get("headline").trim());
+        }
 
         userRepository.save(user);
 
@@ -197,7 +217,9 @@ public class SettingsApiController {
                         "email", user.getEmail(),
                         "phoneNumber", user.getPhoneNumber() != null ? user.getPhoneNumber() : "",
                         "companyName", user.getCompanyName() != null ? user.getCompanyName() : "",
-                        "careerRole", user.getCareerRole() != null ? user.getCareerRole() : ""
+                        "careerRole", user.getCareerRole() != null ? user.getCareerRole() : "",
+                        "location", user.getLocation() != null ? user.getLocation() : "",
+                        "headline", user.getHeadline() != null ? user.getHeadline() : ""
                 )
         ));
     }

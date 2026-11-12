@@ -5,6 +5,7 @@ import com.smarthire.dto.CandidateInfoDTO;
 import com.smarthire.dto.ResumeAnalyzeRequestDTO;
 import com.smarthire.entity.Resume;
 import com.smarthire.entity.ResumeAnalysis;
+import com.smarthire.entity.User;
 import com.smarthire.repository.ResumeAnalysisRepository;
 import com.smarthire.repository.ResumeRepository;
 import com.smarthire.repository.UserRepository;
@@ -26,6 +27,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -43,6 +45,53 @@ public class AnalysisController {
     private final ResumeAnalysisRepository resumeAnalysisRepository;
     private final UserRepository userRepository;
     private final com.smarthire.service.RealtimeSyncService realtimeSyncService;
+    private final com.smarthire.service.NotificationService notificationService;
+
+    private User getAuthenticatedUser() {
+        return resolveUser(null, null);
+    }
+
+    private User resolveUser(String emailParam, String headerEmail) {
+        String email = null;
+        if (emailParam != null && !emailParam.isBlank()) {
+            email = emailParam.trim().toLowerCase();
+        } else if (headerEmail != null && !headerEmail.isBlank()) {
+            email = headerEmail.trim().toLowerCase();
+        } else {
+            try {
+                ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                if (attrs != null && attrs.getRequest() != null) {
+                    String h = attrs.getRequest().getHeader("X-User-Email");
+                    if (h != null && !h.isBlank()) {
+                        email = h.trim().toLowerCase();
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (email == null) {
+            try {
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated() && !(auth instanceof org.springframework.security.authentication.AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
+                    email = auth.getName();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (email == null) {
+            try {
+                ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                if (attrs != null && attrs.getRequest() != null && attrs.getRequest().getSession(false) != null) {
+                    email = (String) attrs.getRequest().getSession(false).getAttribute("userEmail");
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (email != null && !email.isBlank()) {
+            return userRepository.findByEmail(email.trim().toLowerCase()).orElse(null);
+        }
+        return null;
+    }
 
     /**
      * Executes AI ATS analysis from JSON request body.
@@ -107,7 +156,9 @@ public class AnalysisController {
             @RequestParam(value = "jobDescription", required = false) String jobDescription,
             @RequestParam(value = "aiProvider", required = false) String aiProvider,
             @RequestParam(value = "model", required = false) String model,
-            @RequestParam(value = "geminiApiKey", required = false) String geminiApiKey
+            @RequestParam(value = "geminiApiKey", required = false) String geminiApiKey,
+            @RequestParam(value = "email", required = false) String emailParam,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail
     ) {
         MultipartFile uploadFile = (resumeFile != null && !resumeFile.isEmpty()) ? resumeFile : file;
 
@@ -139,18 +190,37 @@ public class AnalysisController {
                 String normPhone = CandidateNormalizationUtils.normalizePhone(candidateInfo.getPhoneNumber());
                 String candName = CandidateNormalizationUtils.normalizeName(candidateInfo.getName());
 
+                User currentUser = resolveUser(emailParam, headerEmail);
+
                 Optional<Resume> existingResumeOpt = Optional.empty();
-                if (normEmail != null) {
-                    existingResumeOpt = resumeRepository.findFirstByCandidateEmailNormalizedOrderByCreatedAtDesc(normEmail);
-                }
-                if (existingResumeOpt.isEmpty() && normPhone != null) {
-                    existingResumeOpt = resumeRepository.findFirstByCandidatePhoneNormalizedOrderByCreatedAtDesc(normPhone);
-                }
-                if (existingResumeOpt.isEmpty() && uploadFile.getSize() > 0) {
-                    existingResumeOpt = resumeRepository.findFirstByFileNameAndFileSizeOrderByCreatedAtDesc(uploadFile.getOriginalFilename(), uploadFile.getSize());
-                }
-                if (existingResumeOpt.isEmpty() && candName != null && !candName.isBlank() && !candName.equalsIgnoreCase("Candidate")) {
-                    existingResumeOpt = resumeRepository.findFirstByCandidateNameIgnoreCaseOrderByCreatedAtDesc(candName);
+                if (currentUser != null) {
+                    // Strictly isolate to the current user's resumes
+                    if (normEmail != null) {
+                        existingResumeOpt = resumeRepository.findFirstByUserIdAndCandidateEmailNormalizedOrderByCreatedAtDesc(currentUser.getId(), normEmail);
+                    }
+                    if (existingResumeOpt.isEmpty() && normPhone != null) {
+                        existingResumeOpt = resumeRepository.findFirstByUserIdAndCandidatePhoneNormalizedOrderByCreatedAtDesc(currentUser.getId(), normPhone);
+                    }
+                    if (existingResumeOpt.isEmpty() && uploadFile.getSize() > 0) {
+                        existingResumeOpt = resumeRepository.findFirstByUserIdAndFileNameAndFileSizeOrderByCreatedAtDesc(currentUser.getId(), uploadFile.getOriginalFilename(), uploadFile.getSize());
+                    }
+                    if (existingResumeOpt.isEmpty() && candName != null && !candName.isBlank() && !candName.equalsIgnoreCase("Candidate")) {
+                        existingResumeOpt = resumeRepository.findFirstByUserIdAndCandidateNameIgnoreCaseOrderByCreatedAtDesc(currentUser.getId(), candName);
+                    }
+                } else {
+                    // Unauthenticated / guest scan
+                    if (normEmail != null) {
+                        existingResumeOpt = resumeRepository.findFirstByCandidateEmailNormalizedOrderByCreatedAtDesc(normEmail);
+                    }
+                    if (existingResumeOpt.isEmpty() && normPhone != null) {
+                        existingResumeOpt = resumeRepository.findFirstByCandidatePhoneNormalizedOrderByCreatedAtDesc(normPhone);
+                    }
+                    if (existingResumeOpt.isEmpty() && uploadFile.getSize() > 0) {
+                        existingResumeOpt = resumeRepository.findFirstByFileNameAndFileSizeOrderByCreatedAtDesc(uploadFile.getOriginalFilename(), uploadFile.getSize());
+                    }
+                    if (existingResumeOpt.isEmpty() && candName != null && !candName.isBlank() && !candName.equalsIgnoreCase("Candidate")) {
+                        existingResumeOpt = resumeRepository.findFirstByCandidateNameIgnoreCaseOrderByCreatedAtDesc(candName);
+                    }
                 }
 
                 boolean isDuplicateCandidate = existingResumeOpt.isPresent();
@@ -165,7 +235,10 @@ public class AnalysisController {
                     boolean textIdentical = !oldText.isEmpty() && oldText.equals(newText);
                     String normRole = CandidateNormalizationUtils.normalizeRole(effectiveRole);
 
-                    if (normEmail != null) {
+                    if (currentUser != null) {
+                        existingAnalysisOpt = resumeAnalysisRepository.findFirstByUserIdAndTargetJobRoleNormalized(currentUser.getId(), normRole);
+                    }
+                    if (existingAnalysisOpt.isEmpty() && normEmail != null) {
                         existingAnalysisOpt = resumeAnalysisRepository.findFirstByCandidateEmailNormalizedAndTargetJobRoleNormalized(normEmail, normRole);
                     }
                     if (existingAnalysisOpt.isEmpty() && normPhone != null) {
@@ -228,25 +301,8 @@ public class AnalysisController {
                 }
 
                 // Associate user if authenticated
-                try {
-                    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-                    if (auth != null && auth.getName() != null && !auth.getName().equalsIgnoreCase("anonymousUser")) {
-                        userRepository.findByEmail(auth.getName()).ifPresent(resumeToSave::setUser);
-                    }
-                } catch (Exception ignored) {
-                }
-
-                if (resumeToSave.getUser() == null) {
-                    try {
-                        ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-                        if (attrs != null && attrs.getRequest() != null && attrs.getRequest().getSession(false) != null) {
-                            String email = (String) attrs.getRequest().getSession(false).getAttribute("userEmail");
-                            if (email != null && !email.isBlank()) {
-                                userRepository.findByEmail(email).ifPresent(resumeToSave::setUser);
-                            }
-                        }
-                    } catch (Exception ignored) {
-                    }
+                if (currentUser != null) {
+                    resumeToSave.setUser(currentUser);
                 }
 
                 Resume savedResume = resumeRepository.save(resumeToSave);
@@ -271,6 +327,8 @@ public class AnalysisController {
         }
 
         try {
+            User currentUser = resolveUser(emailParam, headerEmail);
+
             ATSAnalysisDTO result = resumeAnalysisService.analyzeResume(
                     targetResumeId,
                     effectiveRole,
@@ -284,7 +342,7 @@ public class AnalysisController {
             result.setContentModified(true);
             result.setDifferenceSummary("Resume modifications detected and evaluated successfully.");
 
-            // Real-time WebSocket sync broadcast
+            // 1. Real-time WebSocket sync broadcast for HR Dashboard only
             try {
                 realtimeSyncService.notifyResumeAnalyzed(
                         result.getId(),
@@ -295,6 +353,62 @@ public class AnalysisController {
                 );
             } catch (Exception wsEx) {
                 log.warn("Failed to dispatch real-time analysis sync: {}", wsEx.getMessage());
+            }
+
+            // 2. Targeted Notifications:
+            // Notify ALL HR and RECRUITER users in the database
+            try {
+                List<User> hrUsers = userRepository.findByRoleIn(java.util.List.of("HR", "RECRUITER"));
+                for (User hr : hrUsers) {
+                    if (hr.getEmail() != null && !hr.getEmail().isBlank()) {
+                        notificationService.sendEnrichedNotification(
+                                hr.getEmail(),
+                                result.getCandidateName(),
+                                "New Candidate Scan: " + result.getCandidateName() + " (" + result.getOverallScore() + "%)",
+                                "Candidate " + result.getCandidateName() + " evaluated against role '" + result.getTargetJobRole() + "' with ATS Score " + result.getOverallScore() + "%.",
+                                "APPLICATION",
+                                "/dashboard/candidates",
+                                result.getId(),
+                                "RESUME_ANALYSIS",
+                                result.getTargetJobRole(),
+                                "NEW_SCAN",
+                                null,
+                                "Under Review",
+                                result.getCandidateName(),
+                                null, null, null, null, null
+                        );
+                    }
+                }
+            } catch (Exception notifEx) {
+                log.warn("Failed to dispatch HR notification for new scan: {}", notifEx.getMessage());
+            }
+
+            // 3. Notify ONLY the scanning user (confirmation) - Never to other job seekers!
+            try {
+                String scanningUserEmail = (currentUser != null) ? currentUser.getEmail() : result.getCandidateEmail();
+                if (scanningUserEmail != null && !scanningUserEmail.isBlank()) {
+                    String recipientName = (currentUser != null && currentUser.getFullName() != null)
+                            ? currentUser.getFullName()
+                            : result.getCandidateName();
+                    notificationService.sendEnrichedNotification(
+                            scanningUserEmail,
+                            recipientName,
+                            "Resume Scan Complete (" + result.getOverallScore() + "% Score)",
+                            "Your resume evaluation for " + result.getTargetJobRole() + " is ready with ATS match score " + result.getOverallScore() + "%.",
+                            "ANALYSIS",
+                            "/dashboard/analyzerhistory",
+                            result.getId(),
+                            "RESUME_ANALYSIS",
+                            result.getTargetJobRole(),
+                            "ANALYSIS_COMPLETE",
+                            null,
+                            "Completed",
+                            "SmartHire AI",
+                            null, null, null, null, null
+                    );
+                }
+            } catch (Exception notifEx) {
+                log.warn("Failed to dispatch candidate scan confirmation: {}", notifEx.getMessage());
             }
 
             return ResponseEntity.ok(result);
@@ -322,14 +436,38 @@ public class AnalysisController {
     @GetMapping("/{id}")
     public ResponseEntity<?> getAnalysisById(@PathVariable("id") Long id) {
         try {
-            ATSAnalysisDTO analysis = resumeAnalysisService.getAnalysis(id);
+            Optional<ResumeAnalysis> entityOpt = resumeAnalysisRepository.findById(id);
+            if (entityOpt.isEmpty()) {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                        "status", 404,
+                        "error", "Not Found",
+                        "message", "Analysis record not found for ID: " + id
+                ));
+            }
+
+            ResumeAnalysis entity = entityOpt.get();
+            User currentUser = getAuthenticatedUser();
+
+            // Authorization check: HR can view all, Job Seeker can only view their own
+            if (currentUser != null && !"HR".equalsIgnoreCase(currentUser.getRole()) && !"RECRUITER".equalsIgnoreCase(currentUser.getRole())) {
+                boolean isOwner = (entity.getUser() != null && entity.getUser().getId().equals(currentUser.getId()))
+                        || (entity.getResume() != null && entity.getResume().getUser() != null && entity.getResume().getUser().getId().equals(currentUser.getId()))
+                        || (entity.getCandidateEmail() != null && entity.getCandidateEmail().equalsIgnoreCase(currentUser.getEmail()))
+                        || (entity.getCandidateEmailNormalized() != null && entity.getCandidateEmailNormalized().equalsIgnoreCase(currentUser.getEmail()));
+
+                if (!isOwner) {
+                    log.warn("Access denied: User [{}] attempted to access analysis [{}] belonging to candidate [{}]",
+                            currentUser.getEmail(), id, entity.getCandidateEmail());
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                            "status", 403,
+                            "error", "Forbidden",
+                            "message", "You do not have permission to view this analysis report."
+                    ));
+                }
+            }
+
+            ATSAnalysisDTO analysis = resumeAnalysisService.toDTO(entity);
             return ResponseEntity.ok(analysis);
-        } catch (IllegalArgumentException e) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "status", 404,
-                    "error", "Not Found",
-                    "message", e.getMessage()
-            ));
         } catch (Exception e) {
             return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
                     "status", 500,
@@ -354,6 +492,23 @@ public class AnalysisController {
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> deleteAnalysis(@PathVariable("id") Long id) {
         return resumeAnalysisRepository.findById(id).map(analysis -> {
+            // Authorization check: Job seeker can only delete their own analysis
+            User currentUser = getAuthenticatedUser();
+            if (currentUser != null && !"HR".equalsIgnoreCase(currentUser.getRole()) && !"RECRUITER".equalsIgnoreCase(currentUser.getRole())) {
+                boolean isOwner = (analysis.getUser() != null && analysis.getUser().getId().equals(currentUser.getId()))
+                        || (analysis.getResume() != null && analysis.getResume().getUser() != null && analysis.getResume().getUser().getId().equals(currentUser.getId()))
+                        || (analysis.getCandidateEmail() != null && analysis.getCandidateEmail().equalsIgnoreCase(currentUser.getEmail()))
+                        || (analysis.getCandidateEmailNormalized() != null && analysis.getCandidateEmailNormalized().equalsIgnoreCase(currentUser.getEmail()));
+
+                if (!isOwner) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                            "status", 403,
+                            "error", "Forbidden",
+                            "message", "You do not have permission to delete this analysis."
+                    ));
+                }
+            }
+
             Resume resume = analysis.getResume();
             String candName = analysis.getCandidateName() != null ? analysis.getCandidateName() : "Candidate";
             String role = analysis.getTargetJobRole() != null ? analysis.getTargetJobRole() : "Role";

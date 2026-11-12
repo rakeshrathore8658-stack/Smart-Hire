@@ -16,10 +16,22 @@ const Dashboard = () => {
 
   const fetchDashboardData = useCallback(async () => {
     try {
+      const activeEmail = user?.email
+        ? user.email.trim().toLowerCase()
+        : (typeof window !== 'undefined'
+            ? (sessionStorage.getItem('smarthire_user_email') || localStorage.getItem('smarthire_user_email') || '')
+            : '');
+
       const [statsRes, historyRes, interviewRes] = await Promise.allSettled([
-        api.get('/dashboard/stats?role=USER'),
-        api.get('/dashboard/history'),
-        api.get('/dashboard/interviews?role=USER'),
+        api.get('/dashboard/stats', {
+          params: { role: 'USER', ...(activeEmail ? { email: activeEmail } : {}) },
+        }),
+        api.get('/dashboard/history', {
+          params: activeEmail ? { email: activeEmail } : {},
+        }),
+        api.get('/dashboard/interviews', {
+          params: { role: 'USER', ...(activeEmail ? { email: activeEmail } : {}) },
+        }),
       ]);
 
       if (statsRes.status === 'fulfilled' && statsRes.value?.data?.stats) {

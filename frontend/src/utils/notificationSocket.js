@@ -3,9 +3,16 @@
  * Provides real-time synchronization & notification push with zero external npm dependencies.
  */
 export class NotificationSocket {
-  constructor(userEmail, onNotification) {
+  constructor(userEmail, userRole, onNotification) {
+    // Support legacy 2-arg signature: (userEmail, onNotification)
+    if (typeof userRole === 'function') {
+      this.onNotification = userRole;
+      this.userRole = 'USER';
+    } else {
+      this.userRole = userRole ? userRole.toUpperCase() : 'USER';
+      this.onNotification = onNotification;
+    }
     this.userEmail = userEmail ? userEmail.trim().toLowerCase() : '';
-    this.onNotification = onNotification;
     this.ws = null;
     this.connected = false;
     this.subId = 0;
@@ -66,10 +73,13 @@ export class NotificationSocket {
           this.connected = true;
           this.subscribedTopics.clear();
 
-          // Core real-time topics
-          this.subscribe('/topic/recruitment');
-          this.subscribe('/topic/notifications/all');
+          const isHr = this.userRole === 'HR' || this.userRole === 'RECRUITER';
+          // Only HR dashboards subscribe to live recruitment pipeline events
+          if (isHr) {
+            this.subscribe('/topic/recruitment');
+          }
 
+          // Each user ONLY subscribes to their private notification stream (no user-to-user leaks)
           if (this.userEmail) {
             this.subscribe(`/topic/notifications/${this.userEmail}`);
           }
@@ -136,12 +146,20 @@ export class NotificationSocket {
     this.subscribedTopics.add(destination);
   }
 
-  updateUserEmail(newEmail) {
+  updateUserEmail(newEmail, newRole) {
     const norm = newEmail ? newEmail.trim().toLowerCase() : '';
-    if (norm === this.userEmail) return;
+    const normRole = newRole ? newRole.toUpperCase() : this.userRole;
+    if (norm === this.userEmail && normRole === this.userRole) return;
     this.userEmail = norm;
-    if (this.connected && norm) {
-      this.subscribe(`/topic/notifications/${norm}`);
+    this.userRole = normRole;
+    if (this.connected) {
+      const isHr = this.userRole === 'HR' || this.userRole === 'RECRUITER';
+      if (isHr) {
+        this.subscribe('/topic/recruitment');
+      }
+      if (norm) {
+        this.subscribe(`/topic/notifications/${norm}`);
+      }
     }
   }
 

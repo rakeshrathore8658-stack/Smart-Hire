@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
 import EmptyState from '../components/common/EmptyState';
 import NotificationDetailModal from '../components/common/NotificationDetailModal';
+import { formatTimeAgo } from '../utils/timeAgo';
 
 const getNotificationBadge = (type) => {
   switch (type?.toUpperCase()) {
@@ -243,7 +244,7 @@ const Notifications = () => {
                         )}
                       </div>
                       <small style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                        {notif.timeAgo || (notif.createdAt ? new Date(notif.createdAt).toLocaleDateString() : 'Just now')}
+                        {formatTimeAgo(notif.createdAt || notif.timeAgo)}
                       </small>
                     </div>
 

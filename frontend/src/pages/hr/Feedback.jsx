@@ -29,20 +29,28 @@ export default function Feedback() {
     let isMounted = true;
     const fetchData = async () => {
       try {
-        const res = await api.get('/dashboard/applications');
-        const list = Array.isArray(res.data)
-          ? res.data
-          : Array.isArray(res.data?.applications)
-          ? res.data.applications
-          : [];
+        const res = await api.get('/dashboard/interviews');
+        const ivList = res.data?.interviews || (Array.isArray(res.data) ? res.data : []);
+
+        const isCompletedInterview = (c) => {
+          if (!c) return false;
+          if (c.interviewStatus === 'COMPLETED') return true;
+          if (c.stage === 'Interview Completed') return true;
+          if (c.feedbackNotes && c.feedbackNotes.trim() !== '') return true;
+          return false;
+        };
+
+        const completed = ivList.filter(isCompletedInterview);
 
         if (isMounted) {
-          setAllCandidates(list);
-          if (list.length > 0) {
+          setAllCandidates(completed);
+          if (completed.length > 0) {
             const current = candIdParam
-              ? list.find((c) => String(c.id) === String(candIdParam)) || list[0]
-              : list[0];
+              ? completed.find((c) => String(c.id) === String(candIdParam)) || completed[0]
+              : completed[0];
             setSelectedCand(current);
+          } else {
+            setSelectedCand(null);
           }
         }
       } catch (err) {
@@ -84,16 +92,18 @@ export default function Feedback() {
   };
 
   const recommendationOptions = [
-    { value: 'Next Round', label: 'Next Round (Proceed to Next Interview Stage)' },
-    { value: 'Strong Hire', label: 'Strong Hire (Exceptional match - Extend Offer)' },
-    { value: 'Hire', label: 'Hire (Meets required technical bar)' },
-    { value: 'Hold', label: 'Hold (Needs additional panel review)' },
-    { value: 'Reject', label: 'Reject (Does not meet required criteria)' },
+    { value: 'Next Round', label: 'Next Round (Proceed to Next Interview Stage)', icon: <i className="bi bi-arrow-right-circle text-primary"></i> },
+    { value: 'Strong Hire', label: 'Strong Hire (Exceptional match - Extend Offer)', icon: <i className="bi bi-award-fill text-success"></i> },
+    { value: 'Hire', label: 'Hire (Meets required technical bar)', icon: <i className="bi bi-check-circle-fill text-success"></i> },
+    { value: 'Hold', label: 'Hold (Needs additional panel review)', icon: <i className="bi bi-pause-circle-fill text-warning"></i> },
+    { value: 'Reject', label: 'Reject (Does not meet required criteria)', icon: <i className="bi bi-x-circle-fill text-danger"></i> },
   ];
 
   const candidateOptions = allCandidates.map((c) => ({
     value: c.id,
     label: `${c.candidateName} · ${c.targetJobRole || 'Candidate'} (${c.overallScore || 70}% Match)`,
+    badge: c.interviewStatus === 'COMPLETED' ? 'Completed' : 'Conducted',
+    icon: <i className="bi bi-person-check-fill text-success"></i>,
   }));
 
   return (
@@ -135,11 +145,11 @@ export default function Feedback() {
       ) : allCandidates.length === 0 ? (
         <article className="card">
           <EmptyState
-            icon="bi-chat-square-text"
-            title="No Candidates Found to Evaluate"
-            description="Upload candidates and schedule interviews before submitting feedback scorecards."
-            actionLabel="Candidate Database"
-            actionLink="/dashboard/candidates"
+            icon="bi-clipboard-check"
+            title="No Completed Interviews to Evaluate"
+            description="Only candidates whose interview round has been conducted and completed will appear here for evaluation scorecards."
+            actionLabel="View Interview Schedule"
+            actionLink="/dashboard/interviews"
           />
         </article>
       ) : (
@@ -153,7 +163,7 @@ export default function Feedback() {
               value={selectedCand?.id || ''}
               onChange={(val) => handleCandidateChange(val)}
               options={candidateOptions}
-              placeholder="Select candidate..."
+              placeholder="Select candidate with completed interview..."
               searchable={true}
             />
           </div>
@@ -209,10 +219,10 @@ export default function Feedback() {
                       key={val}
                       type="button"
                       className={`btn ${techScore === val ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-                      style={{ flex: 1 }}
+                      style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}
                       onClick={() => setTechScore(val)}
                     >
-                      {val} ★
+                      <span>{val}</span> <i className="bi bi-star-fill" style={{ fontSize: '0.72rem' }}></i>
                     </button>
                   ))}
                 </div>
@@ -228,10 +238,10 @@ export default function Feedback() {
                       key={val}
                       type="button"
                       className={`btn ${archScore === val ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-                      style={{ flex: 1 }}
+                      style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}
                       onClick={() => setArchScore(val)}
                     >
-                      {val} ★
+                      <span>{val}</span> <i className="bi bi-star-fill" style={{ fontSize: '0.72rem' }}></i>
                     </button>
                   ))}
                 </div>
@@ -247,10 +257,10 @@ export default function Feedback() {
                       key={val}
                       type="button"
                       className={`btn ${commScore === val ? 'btn-primary' : 'btn-secondary'} btn-sm`}
-                      style={{ flex: 1 }}
+                      style={{ flex: 1, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: '3px' }}
                       onClick={() => setCommScore(val)}
                     >
-                      {val} ★
+                      <span>{val}</span> <i className="bi bi-star-fill" style={{ fontSize: '0.72rem' }}></i>
                     </button>
                   ))}
                 </div>

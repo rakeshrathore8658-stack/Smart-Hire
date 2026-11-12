@@ -125,12 +125,12 @@ const Applications = () => {
   const hiredCount = applications.filter(isHired).length;
 
   const stageOptions = [
-    { value: 'Under Review', label: 'Under Review' },
-    { value: 'Shortlisted', label: 'Shortlisted' },
-    { value: 'Interviewing', label: 'Interviewing' },
-    { value: 'Offered', label: 'Offered' },
-    { value: 'Hired', label: 'Hired' },
-    { value: 'Rejected', label: 'Rejected' },
+    { value: 'Under Review', label: 'Under Review', icon: <i className="bi bi-clock-history text-muted"></i> },
+    { value: 'Shortlisted', label: 'Shortlisted', icon: <i className="bi bi-star-fill text-warning"></i> },
+    { value: 'Interviewing', label: 'Interviewing', icon: <i className="bi bi-calendar-event text-primary"></i> },
+    { value: 'Offered', label: 'Offered', icon: <i className="bi bi-envelope-paper-heart text-success"></i> },
+    { value: 'Hired', label: 'Hired', icon: <i className="bi bi-award-fill text-success"></i> },
+    { value: 'Rejected', label: 'Rejected', icon: <i className="bi bi-x-circle text-danger"></i> },
   ];
 
   const filtered = applications.filter((app) => {

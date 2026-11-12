@@ -44,17 +44,41 @@ public class DashboardApiController {
     private final com.smarthire.service.RealtimeSyncService realtimeSyncService;
     private final com.smarthire.service.CandidateComparisonService candidateComparisonService;
 
-    private User getAuthenticatedUser()
-    {
-        String email = null;
-        try
-        {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
-                email = auth.getName();
-            }
-        } catch (Exception ignored) {}
+    private User getAuthenticatedUser() {
+        return resolveUser(null, null);
+    }
 
+    private User resolveUser(String emailParam, String headerEmail) {
+        String email = null;
+
+        // 1. Explicit request param or X-User-Email header
+        if (emailParam != null && !emailParam.isBlank()) {
+            email = emailParam.trim().toLowerCase();
+        } else if (headerEmail != null && !headerEmail.isBlank()) {
+            email = headerEmail.trim().toLowerCase();
+        } else {
+            try {
+                ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                if (attrs != null && attrs.getRequest() != null) {
+                    String h = attrs.getRequest().getHeader("X-User-Email");
+                    if (h != null && !h.isBlank()) {
+                        email = h.trim().toLowerCase();
+                    }
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 2. Spring Security Authentication
+        if (email == null) {
+            try {
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
+                    email = auth.getName();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        // 3. HTTP Session
         if (email == null) {
             try {
                 ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
@@ -130,8 +154,11 @@ public class DashboardApiController {
     }
 
     @GetMapping("/stats")
-    public ResponseEntity<?> getDashboardStats(@RequestParam(value = "role", required = false) String roleParam) {
-        User user = getAuthenticatedUser();
+    public ResponseEntity<?> getDashboardStats(
+            @RequestParam(value = "role", required = false) String roleParam,
+            @RequestParam(value = "email", required = false) String emailParam,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail) {
+        User user = resolveUser(emailParam, headerEmail);
         String role = (roleParam != null && !roleParam.isBlank())
                 ? roleParam.toUpperCase()
                 : (user != null && user.getRole() != null ? user.getRole().toUpperCase() : "USER");
@@ -170,17 +197,16 @@ public class DashboardApiController {
             return ResponseEntity.ok(Map.of("role", "HR", "stats", hrStats));
         }
 
-        // Job Seeker Stats
-        List<ResumeAnalysis> userAnalyses = new ArrayList<>();
+        // Job Seeker Stats - Strictly isolated to authenticated user
+        List<ResumeAnalysis> userAnalyses;
         if (user != null) {
-            String email = user.getEmail().toLowerCase();
-            userAnalyses = allAnalyses.stream()
-                    .filter(ra -> (ra.getCandidateEmail() != null && ra.getCandidateEmail().equalsIgnoreCase(email)) ||
-                            (ra.getResume() != null && ra.getResume().getUser() != null && ra.getResume().getUser().getId().equals(user.getId())))
-                    .toList();
-        }
-        if (userAnalyses.isEmpty()) {
-            userAnalyses = allAnalyses;
+            userAnalyses = resumeAnalysisRepository.findAllForUser(user.getId(), user.getEmail());
+        } else if (emailParam != null && !emailParam.isBlank()) {
+            userAnalyses = resumeAnalysisRepository.findByCandidateEmailNormalizedOrderByCreatedAtDesc(emailParam.trim().toLowerCase());
+        } else if (headerEmail != null && !headerEmail.isBlank()) {
+            userAnalyses = resumeAnalysisRepository.findByCandidateEmailNormalizedOrderByCreatedAtDesc(headerEmail.trim().toLowerCase());
+        } else {
+            userAnalyses = Collections.emptyList();
         }
 
         double avgAts = userAnalyses.stream().mapToInt(ResumeAnalysis::getOverallScore).average().orElse(0.0);
@@ -210,8 +236,25 @@ public class DashboardApiController {
     }
 
     @GetMapping("/history")
-    public ResponseEntity<?> getHistory() {
-        List<ResumeAnalysis> list = resumeAnalysisRepository.findAllByOrderByCreatedAtDesc();
+    public ResponseEntity<?> getHistory(
+            @RequestParam(value = "email", required = false) String emailParam,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail) {
+        User user = resolveUser(emailParam, headerEmail);
+        List<ResumeAnalysis> list;
+        if (user != null && ("HR".equalsIgnoreCase(user.getRole()) || "RECRUITER".equalsIgnoreCase(user.getRole()))) {
+            // HR sees all applications/analyses across the recruitment portal
+            list = resumeAnalysisRepository.findAllByOrderByCreatedAtDesc();
+        } else if (user != null) {
+            // Job Seeker sees ONLY their own analysis history!
+            list = resumeAnalysisRepository.findAllForUser(user.getId(), user.getEmail());
+        } else if (emailParam != null && !emailParam.isBlank()) {
+            list = resumeAnalysisRepository.findByCandidateEmailNormalizedOrderByCreatedAtDesc(emailParam.trim().toLowerCase());
+        } else if (headerEmail != null && !headerEmail.isBlank()) {
+            list = resumeAnalysisRepository.findByCandidateEmailNormalizedOrderByCreatedAtDesc(headerEmail.trim().toLowerCase());
+        } else {
+            // Unauthenticated guest: empty list so they never see other users' data
+            list = Collections.emptyList();
+        }
         return ResponseEntity.ok(list.stream().map(this::mapAnalysis).toList());
     }
 
@@ -224,6 +267,22 @@ public class DashboardApiController {
             Resume resume = analysis.getResume();
             String candName = analysis.getCandidateName() != null ? analysis.getCandidateName() : "Candidate";
             String role = analysis.getTargetJobRole() != null ? analysis.getTargetJobRole() : "Role";
+
+            // Authorization check: Job seeker can only delete their own analysis
+            User currentUser = getAuthenticatedUser();
+            if (currentUser != null && !"HR".equalsIgnoreCase(currentUser.getRole()) && !"RECRUITER".equalsIgnoreCase(currentUser.getRole())) {
+                boolean isOwner = (analysis.getUser() != null && analysis.getUser().getId().equals(currentUser.getId()))
+                        || (analysis.getResume() != null && analysis.getResume().getUser() != null && analysis.getResume().getUser().getId().equals(currentUser.getId()))
+                        || (analysis.getCandidateEmail() != null && analysis.getCandidateEmail().equalsIgnoreCase(currentUser.getEmail()))
+                        || (analysis.getCandidateEmailNormalized() != null && analysis.getCandidateEmailNormalized().equalsIgnoreCase(currentUser.getEmail()));
+                if (!isOwner) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                            "success", false,
+                            "message", "You do not have permission to delete this record."
+                    ));
+                }
+            }
+
             log.info("Deleting ResumeAnalysis record [id={}] for candidate [{}] and role [{}]", id, candName, role);
 
             resumeAnalysisRepository.delete(analysis);
@@ -495,8 +554,9 @@ public class DashboardApiController {
     @GetMapping({"/interviews", "/candidate/interviews"})
     public ResponseEntity<?> getInterviews(
             @RequestParam(value = "role", required = false) String roleParam,
-            @RequestParam(value = "email", required = false) String emailParam) {
-        User authUser = getAuthenticatedUser();
+            @RequestParam(value = "email", required = false) String emailParam,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail) {
+        User authUser = resolveUser(emailParam, headerEmail);
         List<ResumeAnalysis> all = resumeAnalysisRepository.findAllByOrderByCreatedAtDesc();
 
         boolean isCandidate = (authUser != null && "USER".equalsIgnoreCase(authUser.getRole())) || "USER".equalsIgnoreCase(roleParam) || (emailParam != null && !emailParam.isBlank());
@@ -505,8 +565,15 @@ public class DashboardApiController {
             String candEmail = (authUser != null && authUser.getEmail() != null && !authUser.getEmail().isBlank())
                     ? authUser.getEmail().toLowerCase()
                     : (emailParam != null ? emailParam.trim().toLowerCase() : "");
+            Long userId = (authUser != null) ? authUser.getId() : null;
             interviews = all.stream()
-                    .filter(ra -> candEmail.isBlank() || (ra.getCandidateEmail() != null && ra.getCandidateEmail().equalsIgnoreCase(candEmail)))
+                    .filter(ra -> {
+                        if (userId != null && ra.getUser() != null && ra.getUser().getId().equals(userId)) return true;
+                        if (userId != null && ra.getResume() != null && ra.getResume().getUser() != null && ra.getResume().getUser().getId().equals(userId)) return true;
+                        if (!candEmail.isBlank() && ra.getCandidateEmail() != null && ra.getCandidateEmail().equalsIgnoreCase(candEmail)) return true;
+                        if (!candEmail.isBlank() && ra.getCandidateEmailNormalized() != null && ra.getCandidateEmailNormalized().equalsIgnoreCase(candEmail)) return true;
+                        return false;
+                    })
                     .filter(ra -> ra.getInterviewDate() != null || "Interviewing".equalsIgnoreCase(ra.getStage()) || "Interview".equalsIgnoreCase(ra.getStage()) || ra.getFeedbackNotes() != null || ra.getInterviewStatus() != null)
                     .toList();
         } else {
@@ -529,7 +596,7 @@ public class DashboardApiController {
         resp.put("completedCount", completedCount);
         resp.put("needsFeedbackCount", needsFeedbackCount);
         resp.put("interviews", interviews.stream().map(this::mapAnalysis).toList());
-        resp.put("allCandidates", all.stream().map(this::mapAnalysis).toList());
+        resp.put("allCandidates", isCandidate ? Collections.emptyList() : all.stream().map(this::mapAnalysis).toList());
 
         return ResponseEntity.ok(resp);
     }
@@ -750,6 +817,31 @@ public class DashboardApiController {
         }).orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).build());
     }
 
+    @PostMapping({"/interviews/{id}/complete", "/interviews/complete"})
+    public ResponseEntity<?> completeInterview(
+            @PathVariable(value = "id", required = false) Long pathId,
+            @RequestBody(required = false) Map<String, Object> payload) {
+        Long candidateId = pathId != null ? pathId : (payload != null && payload.get("candidateId") != null ? Long.valueOf(payload.get("candidateId").toString()) : null);
+        if (candidateId == null) {
+            return ResponseEntity.badRequest().body(Map.of("message", "Candidate ID is required"));
+        }
+
+        return resumeAnalysisRepository.findById(candidateId).map(analysis -> {
+            analysis.setInterviewStatus("COMPLETED");
+            if (analysis.getStage() == null || "Interviewing".equalsIgnoreCase(analysis.getStage()) || "Shortlisted".equalsIgnoreCase(analysis.getStage())) {
+                analysis.setStage("Interview Completed");
+            }
+            ResumeAnalysis saved = resumeAnalysisRepository.save(analysis);
+
+            try {
+                String cName = saved.getCandidateName() != null ? saved.getCandidateName() : "Candidate";
+                realtimeSyncService.notifyStageUpdated(saved.getId(), saved.getStage(), cName);
+            } catch (Exception ignored) {}
+
+            return ResponseEntity.ok(mapAnalysis(saved));
+        }).orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).build());
+    }
+
     @PostMapping("/feedback")
     public ResponseEntity<?> submitFeedback(@RequestBody Map<String, Object> payload) {
         Long candidateId = payload.get("candId") != null ? Long.valueOf(payload.get("candId").toString())
@@ -870,16 +962,18 @@ public class DashboardApiController {
             @RequestParam(value = "jobId", required = false) Long jobId,
             @RequestParam(value = "aiProvider", defaultValue = "local") String aiProvider,
             @RequestParam(value = "model", required = false) String model,
+            @RequestParam(value = "geminiApiKey", required = false) String geminiApiKey,
             @RequestParam(value = "hrEmail", required = false) String hrEmail
     ) {
-        // Enforce strictly local AI models for bulk scanning
         String effectiveAiProvider = "local";
-        if ("ollama".equalsIgnoreCase(aiProvider)) {
+        if ("gemini".equalsIgnoreCase(aiProvider)) {
+            effectiveAiProvider = "gemini";
+        } else if ("ollama".equalsIgnoreCase(aiProvider)) {
             effectiveAiProvider = "ollama";
         }
         try {
             BulkUploadResponseDTO response = bulkResumeUploadService.processBatch(
-                    files, jobId, effectiveAiProvider, model, hrEmail
+                    files, jobId, effectiveAiProvider, model, hrEmail, geminiApiKey
             );
             return ResponseEntity.ok(response);
         } catch (IllegalArgumentException e) {

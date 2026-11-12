@@ -1,5 +1,6 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
+import { formatTimeAgo } from '../../utils/timeAgo';
 
 const getModalConfig = (item) => {
   const actionType = item?.actionType || '';
@@ -115,10 +116,10 @@ const NotificationDetailModal = ({ notification, onClose }) => {
   const config = getModalConfig(notification);
 
   const formattedDateTime = notification.createdAt
-    ? new Date(notification.createdAt).toLocaleString('en-US', {
+    ? `${new Date(notification.createdAt).toLocaleString('en-US', {
         dateStyle: 'medium',
         timeStyle: 'short',
-      })
+      })} (${formatTimeAgo(notification.createdAt)})`
     : 'Recent';
 
   const candidateName = notification.candidateName || 'Candidate';

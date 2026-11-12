@@ -9,17 +9,47 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const { setTheme } = useTheme();
 
+  const saveUserSession = (u) => {
+    if (u && u.email) {
+      const email = u.email.trim().toLowerCase();
+      try {
+        sessionStorage.setItem('smarthire_user_email', email);
+        sessionStorage.setItem('smarthire_user', JSON.stringify(u));
+        localStorage.setItem('smarthire_user_email', email);
+        localStorage.setItem('smarthire_user', JSON.stringify(u));
+      } catch (_) {}
+    }
+  };
+
+  const clearUserSession = () => {
+    try {
+      sessionStorage.removeItem('smarthire_user_email');
+      sessionStorage.removeItem('smarthire_user');
+      localStorage.removeItem('smarthire_user_email');
+      localStorage.removeItem('smarthire_user');
+    } catch (_) {}
+  };
+
   const fetchCurrentUser = async () => {
     try {
-      const response = await api.get('/auth/me');
+      const cachedEmail = typeof window !== 'undefined'
+        ? (sessionStorage.getItem('smarthire_user_email') || localStorage.getItem('smarthire_user_email'))
+        : null;
+
+      const response = await api.get('/auth/me', {
+        headers: cachedEmail ? { 'X-User-Email': cachedEmail } : {},
+      });
+
       if (response.data && response.data.authenticated && response.data.user) {
         const u = response.data.user;
         setUser(u);
+        saveUserSession(u);
         if (u.themePreference) {
           setTheme(u.themePreference, false);
         }
       } else {
         setUser(null);
+        clearUserSession();
       }
     } catch (err) {
       setUser(null);
@@ -37,6 +67,7 @@ export const AuthProvider = ({ children }) => {
     if (response.data && response.data.success && response.data.user) {
       const u = response.data.user;
       setUser(u);
+      saveUserSession(u);
       if (u.themePreference) {
         setTheme(u.themePreference, false);
       }
@@ -50,6 +81,7 @@ export const AuthProvider = ({ children }) => {
     if (response.data && response.data.success && response.data.user) {
       const u = response.data.user;
       setUser(u);
+      saveUserSession(u);
       if (u.themePreference) {
         setTheme(u.themePreference, false);
       }
@@ -63,10 +95,16 @@ export const AuthProvider = ({ children }) => {
       await api.post('/auth/logout');
     } catch (err) {}
     setUser(null);
+    clearUserSession();
+    setTheme('light', false);
   };
 
   const updateUser = (updatedData) => {
-    setUser((prev) => (prev ? { ...prev, ...updatedData } : null));
+    setUser((prev) => {
+      const merged = prev ? { ...prev, ...updatedData } : null;
+      if (merged) saveUserSession(merged);
+      return merged;
+    });
     if (updatedData.themePreference) {
       setTheme(updatedData.themePreference, false);
     }

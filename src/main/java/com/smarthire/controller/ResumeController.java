@@ -3,6 +3,7 @@ package com.smarthire.controller;
 import com.smarthire.dto.CandidateInfoDTO;
 import com.smarthire.dto.ResumeUploadResponseDTO;
 import com.smarthire.entity.Resume;
+import com.smarthire.entity.User;
 import com.smarthire.repository.ResumeAnalysisRepository;
 import com.smarthire.repository.ResumeRepository;
 import com.smarthire.repository.UserRepository;
@@ -36,6 +37,42 @@ public class ResumeController {
     private final ResumeAnalysisRepository resumeAnalysisRepository;
     private final UserRepository userRepository;
     private final com.smarthire.service.RealtimeSyncService realtimeSyncService;
+
+    private User getAuthenticatedUser() {
+        String email = null;
+        try {
+            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs != null && attrs.getRequest() != null) {
+                String h = attrs.getRequest().getHeader("X-User-Email");
+                if (h != null && !h.isBlank()) {
+                    email = h.trim().toLowerCase();
+                }
+            }
+        } catch (Exception ignored) {}
+
+        if (email == null) {
+            try {
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated() && !(auth instanceof org.springframework.security.authentication.AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
+                    email = auth.getName();
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (email == null) {
+            try {
+                ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                if (attrs != null && attrs.getRequest() != null && attrs.getRequest().getSession(false) != null) {
+                    email = (String) attrs.getRequest().getSession(false).getAttribute("userEmail");
+                }
+            } catch (Exception ignored) {}
+        }
+
+        if (email != null && !email.isBlank()) {
+            return userRepository.findByEmail(email.trim().toLowerCase()).orElse(null);
+        }
+        return null;
+    }
 
     /**
      * Upload and parse resume document (PDF, DOC, DOCX, TXT).
@@ -188,20 +225,38 @@ public class ResumeController {
      */
     @GetMapping("/{id}")
     public ResponseEntity<?> getResumeById(@PathVariable("id") Long id) {
-        return resumeRepository.findById(id)
-                .map(resume -> ResponseEntity.ok((Object) Map.of(
-                        "id", resume.getId(),
-                        "fileName", resume.getFileName(),
-                        "fileType", resume.getFileType() != null ? resume.getFileType() : "application/pdf",
-                        "fileSize", resume.getFileSize() != null ? resume.getFileSize() : 0,
-                        "createdAt", resume.getCreatedAt(),
-                        "normalizedText", resume.getNormalizedText() != null ? resume.getNormalizedText() : ""
-                )))
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                        "status", 404,
-                        "error", "Not Found",
-                        "message", "Resume with ID " + id + " does not exist."
-                )));
+        Optional<Resume> resumeOpt = resumeRepository.findById(id);
+        if (resumeOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "status", 404,
+                    "error", "Not Found",
+                    "message", "Resume with ID " + id + " does not exist."
+            ));
+        }
+
+        Resume resume = resumeOpt.get();
+        User currentUser = getAuthenticatedUser();
+        if (currentUser != null && !"HR".equalsIgnoreCase(currentUser.getRole()) && !"RECRUITER".equalsIgnoreCase(currentUser.getRole())) {
+            boolean isOwner = (resume.getUser() != null && resume.getUser().getId().equals(currentUser.getId()))
+                    || (resume.getCandidateEmail() != null && resume.getCandidateEmail().equalsIgnoreCase(currentUser.getEmail()))
+                    || (resume.getCandidateEmailNormalized() != null && resume.getCandidateEmailNormalized().equalsIgnoreCase(currentUser.getEmail()));
+            if (!isOwner) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                        "status", 403,
+                        "error", "Forbidden",
+                        "message", "You do not have permission to view this resume document."
+                ));
+            }
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "id", resume.getId(),
+                "fileName", resume.getFileName(),
+                "fileType", resume.getFileType() != null ? resume.getFileType() : "application/pdf",
+                "fileSize", resume.getFileSize() != null ? resume.getFileSize() : 0,
+                "createdAt", resume.getCreatedAt(),
+                "normalizedText", resume.getNormalizedText() != null ? resume.getNormalizedText() : ""
+        ));
     }
 
     /**
@@ -211,6 +266,19 @@ public class ResumeController {
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> deleteResume(@PathVariable("id") Long id) {
         return resumeRepository.findById(id).map(resume -> {
+            User currentUser = getAuthenticatedUser();
+            if (currentUser != null && !"HR".equalsIgnoreCase(currentUser.getRole()) && !"RECRUITER".equalsIgnoreCase(currentUser.getRole())) {
+                boolean isOwner = (resume.getUser() != null && resume.getUser().getId().equals(currentUser.getId()))
+                        || (resume.getCandidateEmail() != null && resume.getCandidateEmail().equalsIgnoreCase(currentUser.getEmail()))
+                        || (resume.getCandidateEmailNormalized() != null && resume.getCandidateEmailNormalized().equalsIgnoreCase(currentUser.getEmail()));
+                if (!isOwner) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                            "success", false,
+                            "message", "You do not have permission to delete this resume."
+                    ));
+                }
+            }
+
             log.info("Deleting Resume record [id={}] and all associated analyses", id);
             try {
                 resumeAnalysisRepository.deleteByResumeId(id);

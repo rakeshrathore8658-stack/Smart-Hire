@@ -6,6 +6,7 @@ import { useNotifications } from '../../context/NotificationContext';
 import { useOnboarding } from '../../context/OnboardingContext';
 import ProfileDropdown from './ProfileDropdown';
 import NotificationDetailModal from '../common/NotificationDetailModal';
+import { formatTimeAgo } from '../../utils/timeAgo';
 
 const Header = ({ pageTitle, toggleSidebar, isCollapsed, isMobileOpen }) => {
   const { user, role, logout } = useAuth();
@@ -182,7 +183,7 @@ const Header = ({ pageTitle, toggleSidebar, isCollapsed, isMobileOpen }) => {
                           </span>
                           <div className="notif-content">
                             <p className="notif-title">{notif.title}</p>
-                            <span className="notif-time">{notif.timeAgo || 'Just now'}</span>
+                            <span className="notif-time">{formatTimeAgo(notif.createdAt || notif.timeAgo)}</span>
                           </div>
                         </button>
                         {!notif.isRead && (
@@ -269,4 +270,4 @@ const Header = ({ pageTitle, toggleSidebar, isCollapsed, isMobileOpen }) => {
   );
 };
 
-export default Header;
+export default React.memo(Header);

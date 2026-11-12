@@ -39,6 +39,10 @@ public class ResumeAnalysis {
     @JoinColumn(name = "resume_id", nullable = false)
     private Resume resume;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
+
     public String getResumeFileName() {
         try {
             return (resume != null && resume.getFileName() != null) ? resume.getFileName() : "resume.pdf";
@@ -490,6 +494,9 @@ public class ResumeAnalysis {
     protected void onCreate() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+        if (user == null && resume != null && resume.getUser() != null) {
+            user = resume.getUser();
         }
         if (overallScore == null) overallScore = 0;
         if (skillsScore == null) skillsScore = 0;

@@ -27,5 +27,13 @@ public interface ResumeRepository extends JpaRepository<Resume, Long> {
 
     Optional<Resume> findFirstByCandidateNameIgnoreCaseOrderByCreatedAtDesc(String candidateName);
 
+    Optional<Resume> findFirstByUserIdAndCandidateEmailNormalizedOrderByCreatedAtDesc(Long userId, String candidateEmailNormalized);
+
+    Optional<Resume> findFirstByUserIdAndCandidatePhoneNormalizedOrderByCreatedAtDesc(Long userId, String candidatePhoneNormalized);
+
+    Optional<Resume> findFirstByUserIdAndFileNameAndFileSizeOrderByCreatedAtDesc(Long userId, String fileName, Long fileSize);
+
+    Optional<Resume> findFirstByUserIdAndCandidateNameIgnoreCaseOrderByCreatedAtDesc(Long userId, String candidateName);
+
     List<Resume> findByCandidateEmailNormalizedOrderByCreatedAtDesc(String candidateEmailNormalized);
 }

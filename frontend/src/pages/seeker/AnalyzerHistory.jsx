@@ -5,8 +5,10 @@ import CustomSelect from '../../components/common/CustomSelect';
 import EmptyState from '../../components/common/EmptyState';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import useRealtimeSync from '../../hooks/useRealtimeSync';
+import { useAuth } from '../../context/AuthContext';
 
 const AnalyzerHistory = () => {
+  const { user } = useAuth();
   const [analysesList, setAnalysesList] = useState([]);
   const [dbJobs, setDbJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17,8 +19,16 @@ const AnalyzerHistory = () => {
 
   const fetchHistory = useCallback(async () => {
     try {
+      const activeEmail = user?.email
+        ? user.email.trim().toLowerCase()
+        : (typeof window !== 'undefined'
+            ? (sessionStorage.getItem('smarthire_user_email') || localStorage.getItem('smarthire_user_email') || '')
+            : '');
+
       const [historyRes, jobsRes] = await Promise.allSettled([
-        api.get('/dashboard/history'),
+        api.get('/dashboard/history', {
+          params: activeEmail ? { email: activeEmail } : {},
+        }),
         api.get('/jobs'),
       ]);
 
@@ -37,7 +47,7 @@ const AnalyzerHistory = () => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [user?.email]);
 
   useEffect(() => {
     fetchHistory();
@@ -94,7 +104,7 @@ const AnalyzerHistory = () => {
   const scores = analysesList.map((a) => a.overallScore || a.atsScore || 0).filter((s) => s > 0);
   const highestScore = scores.length > 0 ? Math.max(...scores) : 0;
   const avgScore = scores.length > 0 ? Math.round(scores.reduce((a, b) => a + b, 0) / scores.length) : 0;
-  const mostTargetedRole = analysesList[0]?.targetJobRole || 'Java Developer';
+  const mostTargetedRole = analysesList[0]?.targetJobRole || '—';
 
   return (
     <div>
@@ -214,7 +224,10 @@ const AnalyzerHistory = () => {
             <CustomSelect
               value={selectedRole}
               onChange={(val) => setSelectedRole(val)}
-              options={[{ value: '', label: 'All Career Roles' }, ...availableRoles.map((r) => ({ value: r, label: r }))]}
+              options={[
+                { value: '', label: 'All Career Roles', icon: <i className="bi bi-briefcase"></i> },
+                ...availableRoles.map((r) => ({ value: r, label: r, icon: <i className="bi bi-person-badge"></i> })),
+              ]}
               placeholder="All Career Roles"
               searchable={true}
               style={{ minWidth: '190px' }}
@@ -224,10 +237,10 @@ const AnalyzerHistory = () => {
               value={selectedScore}
               onChange={(val) => setSelectedScore(val)}
               options={[
-                { value: '', label: 'All Scores' },
-                { value: 'high', label: 'High (80%+)' },
-                { value: 'mid', label: 'Average (60-79%)' },
-                { value: 'low', label: 'Needs Work (<60%)' },
+                { value: '', label: 'All Scores', icon: <i className="bi bi-funnel"></i> },
+                { value: 'high', label: 'High (80%+)', badge: '80%+', icon: <i className="bi bi-award-fill text-success"></i> },
+                { value: 'mid', label: 'Average (60-79%)', badge: '60-79%', icon: <i className="bi bi-shield-check text-warning"></i> },
+                { value: 'low', label: 'Needs Work (<60%)', badge: '<60%', icon: <i className="bi bi-exclamation-triangle text-danger"></i> },
               ]}
               placeholder="All Scores"
               style={{ minWidth: '160px' }}

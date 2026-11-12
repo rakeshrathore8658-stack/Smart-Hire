@@ -46,6 +46,18 @@ public class BulkResumeUploadService {
             String model,
             String hrEmailOverride
     ) {
+        return processBatch(files, jobId, aiProvider, model, hrEmailOverride, null);
+    }
+
+    @org.springframework.transaction.annotation.Transactional
+    public BulkUploadResponseDTO processBatch(
+            MultipartFile[] files,
+            Long jobId,
+            String aiProvider,
+            String model,
+            String hrEmailOverride,
+            String geminiApiKey
+    ) {
         if (files == null || files.length == 0) {
             throw new IllegalArgumentException("No resume files provided for bulk upload.");
         }
@@ -66,16 +78,21 @@ public class BulkResumeUploadService {
                 ? authUser.getFullName()
                 : "Recruiter";
 
-        // Bulk resume scan STRICTLY enforces local AI models (100% offline, privacy & zero cloud quota limits)
+        // Support Local NLP, Ollama, and Google Gemini AI for bulk resume evaluation
         String effectiveProvider = "local";
         String effectiveModel = model;
-        if ("ollama".equalsIgnoreCase(aiProvider)) {
+        if ("gemini".equalsIgnoreCase(aiProvider)) {
+            effectiveProvider = "gemini";
+            if (effectiveModel == null || effectiveModel.isBlank()) {
+                effectiveModel = "gemini-2.5-flash";
+            }
+        } else if ("ollama".equalsIgnoreCase(aiProvider)) {
             effectiveProvider = "ollama";
             if (effectiveModel == null || effectiveModel.isBlank()) {
                 effectiveModel = "qwen3:4b";
             }
         }
-        log.info("BulkResumeUploadService: Processing batch of {} resumes strictly via local AI provider: {} (model: {})",
+        log.info("BulkResumeUploadService: Processing batch of {} resumes via AI provider: {} (model: {})",
                 files.length, effectiveProvider, effectiveModel);
 
         List<Map<String, Object>> processedList = new ArrayList<>();
@@ -205,14 +222,14 @@ public class BulkResumeUploadService {
 
                 Resume savedResume = resumeRepository.save(resumeToSave);
 
-                // Step 4: Run Deep ATS Evaluation strictly with local model
+                // Step 4: Run Deep ATS Evaluation with configured AI model (Local, Ollama, or Gemini)
                 ATSAnalysisDTO analysisResult = resumeAnalysisService.analyzeResume(
                         savedResume.getId(),
                         targetRole,
                         targetJobDesc,
                         effectiveProvider,
                         effectiveModel,
-                        null
+                        geminiApiKey
                 );
 
                 Map<String, Object> candidateMap = new LinkedHashMap<>();

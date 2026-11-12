@@ -27,11 +27,23 @@ public class OnboardingApiController {
     private User getAuthenticatedUser() {
         String email = null;
         try {
-            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
-                email = auth.getName();
+            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs != null && attrs.getRequest() != null) {
+                String h = attrs.getRequest().getHeader("X-User-Email");
+                if (h != null && !h.isBlank()) {
+                    email = h.trim().toLowerCase();
+                }
             }
         } catch (Exception ignored) {}
+
+        if (email == null) {
+            try {
+                Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+                if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
+                    email = auth.getName();
+                }
+            } catch (Exception ignored) {}
+        }
 
         if (email == null) {
             try {

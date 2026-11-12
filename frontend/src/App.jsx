@@ -5,6 +5,7 @@ import { useAuth } from './context/AuthContext';
 // Layout & Common
 import DashboardLayout from './components/layout/DashboardLayout';
 import ProtectedRoute from './components/common/ProtectedRoute';
+import TopLoadingBar from './components/common/TopLoadingBar';
 
 // Public Pages
 import LandingPage from './pages/public/LandingPage';
@@ -47,7 +48,9 @@ function RoleDashboard() {
 
 export default function App() {
   return (
-    <Routes>
+    <>
+      <TopLoadingBar />
+      <Routes>
       {/* Public Pages */}
       <Route path="/" element={<LandingPage />} />
       <Route path="/login" element={<Login />} />
@@ -110,5 +113,6 @@ export default function App() {
       {/* Fallback 404 Page */}
       <Route path="*" element={<NotFound />} />
     </Routes>
+    </>
   );
 }

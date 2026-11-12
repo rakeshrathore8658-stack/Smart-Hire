@@ -67,6 +67,9 @@ class RestApiTestSuiteTest {
     @MockitoBean
     private RealtimeSyncService realtimeSyncService;
 
+    @MockitoBean
+    private com.smarthire.service.NotificationService notificationService;
+
     @Test
     @DisplayName("API Test 1: Upload Resume with valid PDF succeeds (200 OK)")
     void testUploadResume_Success() throws Exception {

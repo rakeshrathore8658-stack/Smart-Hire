@@ -186,13 +186,20 @@ public class AuthApiController {
     }
 
     @GetMapping("/me")
-    public ResponseEntity<?> getCurrentUser(HttpSession session) {
-        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    public ResponseEntity<?> getCurrentUser(
+            HttpSession session,
+            @RequestHeader(value = "X-User-Email", required = false) String headerEmail) {
         String email = null;
-        if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
-            email = auth.getName();
-        } else if (session != null && session.getAttribute("userEmail") != null) {
-            email = (String) session.getAttribute("userEmail");
+        if (headerEmail != null && !headerEmail.isBlank()) {
+            email = headerEmail.trim().toLowerCase();
+        }
+        if (email == null) {
+            Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+            if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
+                email = auth.getName();
+            } else if (session != null && session.getAttribute("userEmail") != null) {
+                email = (String) session.getAttribute("userEmail");
+            }
         }
 
         if (email == null || email.isBlank()) {

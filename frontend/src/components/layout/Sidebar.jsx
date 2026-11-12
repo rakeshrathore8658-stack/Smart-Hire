@@ -323,4 +323,4 @@ const Sidebar = ({ isMobileOpen, isCollapsed, toggleSidebar, closeSidebar, close
   );
 };
 
-export default Sidebar;
+export default React.memo(Sidebar);

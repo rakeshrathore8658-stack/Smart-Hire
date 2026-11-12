@@ -19,4 +19,46 @@ const api = axios.create({
   },
 });
 
+api.interceptors.request.use((config) => {
+  try {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('smarthire:loading-start'));
+    }
+    let email = null;
+    if (typeof window !== 'undefined') {
+      email = sessionStorage.getItem('smarthire_user_email') || localStorage.getItem('smarthire_user_email');
+      if (!email) {
+        const stored = sessionStorage.getItem('smarthire_user') || localStorage.getItem('smarthire_user');
+        if (stored) {
+          try {
+            const u = JSON.parse(stored);
+            if (u?.email) email = u.email;
+          } catch (_) {}
+        }
+      }
+    }
+    if (email && email.trim()) {
+      config.headers['X-User-Email'] = email.trim().toLowerCase();
+    }
+  } catch (_) {}
+  return config;
+}, (error) => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('smarthire:loading-end'));
+  }
+  return Promise.reject(error);
+});
+
+api.interceptors.response.use((response) => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('smarthire:loading-end'));
+  }
+  return response;
+}, (error) => {
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('smarthire:loading-end'));
+  }
+  return Promise.reject(error);
+});
+
 export default api;

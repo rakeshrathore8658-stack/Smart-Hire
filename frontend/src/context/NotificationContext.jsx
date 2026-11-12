@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback, use
 import api from '../api/client';
 import { useAuth } from './AuthContext';
 import { NotificationSocket } from '../utils/notificationSocket';
+import NotificationToast from '../components/common/NotificationToast';
 
 const NotificationContext = createContext(null);
 
@@ -10,9 +11,11 @@ export const NotificationProvider = ({ children }) => {
   const [notifications, setNotifications] = useState([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [loading, setLoading] = useState(true);
+  const [activeToast, setActiveToast] = useState(null);
   const socketRef = useRef(null);
 
   const userEmail = user?.email ? user.email.trim().toLowerCase() : '';
+  const userRole = user?.role ? user.role.toUpperCase() : 'USER';
 
   // Fetch notifications from backend database
   const fetchNotifications = useCallback(async () => {
@@ -35,18 +38,19 @@ export const NotificationProvider = ({ children }) => {
   useEffect(() => {
     // Setup or update centralized real-time WebSocket connection
     if (!socketRef.current) {
-      const socket = new NotificationSocket(userEmail, (newNotif) => {
+      const socket = new NotificationSocket(userEmail, userRole, (newNotif) => {
         if (!newNotif || !newNotif.id) return;
         setNotifications((prev) => {
           if (prev.some((n) => n.id === newNotif.id)) return prev;
           return [newNotif, ...prev];
         });
         setUnreadCount((prev) => prev + 1);
+        setActiveToast(newNotif);
       });
       socket.connect();
       socketRef.current = socket;
     } else {
-      socketRef.current.updateUserEmail(userEmail);
+      socketRef.current.updateUserEmail(userEmail, userRole);
     }
 
     if (userEmail) {
@@ -157,6 +161,12 @@ export const NotificationProvider = ({ children }) => {
   return (
     <NotificationContext.Provider value={value}>
       {children}
+      {activeToast && (
+        <NotificationToast
+          notification={activeToast}
+          onClose={() => setActiveToast(null)}
+        />
+      )}
     </NotificationContext.Provider>
   );
 };

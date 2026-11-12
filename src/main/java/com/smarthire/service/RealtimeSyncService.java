@@ -33,11 +33,9 @@ public class RealtimeSyncService {
 
         if (messagingTemplate != null) {
             try {
-                // Topic for all recruitment and candidate events
+                // Topic for all recruitment and candidate events (consumed by HR Dashboards)
                 messagingTemplate.convertAndSend("/topic/recruitment", (Object) payload);
-                // Also publish to general notifications topic
-                messagingTemplate.convertAndSend("/topic/notifications/all", (Object) payload);
-                log.info("Real-time WebSocket event published: [{}] (action: {})", eventType, action);
+                log.info("Real-time WebSocket recruitment event published: [{}] (action: {})", eventType, action);
             } catch (Exception ex) {
                 log.warn("Failed to publish WebSocket sync event [{}]: {}", eventType, ex.getMessage());
             }

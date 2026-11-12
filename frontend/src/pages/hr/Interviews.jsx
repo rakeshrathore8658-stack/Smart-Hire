@@ -276,20 +276,32 @@ export default function Interviews() {
     }
   };
 
+  // Mark Interview Complete
+  const handleMarkComplete = async (item) => {
+    try {
+      await api.post(`/dashboard/interviews/${item.id}/complete`);
+      triggerSuccess(`Interview for ${item.candidateName} marked as completed! Evaluation scorecard is now active.`);
+      fetchInterviews();
+    } catch (err) {
+      console.error(err);
+      triggerError('Failed to mark interview as completed.');
+    }
+  };
+
   // Options
   const roundOptions = [
-    { value: 'Technical Round 1', label: 'Technical Round 1 (Coding & Algorithms)' },
-    { value: 'Technical Round 2', label: 'Technical Round 2 (Deep Dive & Frameworks)' },
-    { value: 'System Architecture', label: 'System Architecture & Scalability Design' },
-    { value: 'Culture & Leadership', label: 'Culture Fit, Team Collaboration & Leadership' },
-    { value: 'Managerial Round', label: 'Managerial & Problem Solving Review' },
-    { value: 'Final HR Negotiation', label: 'Final HR Negotiation & Compensation Review' },
+    { value: 'Technical Round 1', label: 'Technical Round 1 (Coding & Algorithms)', icon: <i className="bi bi-code-square text-accent"></i> },
+    { value: 'Technical Round 2', label: 'Technical Round 2 (Deep Dive & Frameworks)', icon: <i className="bi bi-cpu text-accent"></i> },
+    { value: 'System Architecture', label: 'System Architecture & Scalability Design', icon: <i className="bi bi-diagram-3 text-primary"></i> },
+    { value: 'Culture & Leadership', label: 'Culture Fit, Team Collaboration & Leadership', icon: <i className="bi bi-people text-success"></i> },
+    { value: 'Managerial Round', label: 'Managerial & Problem Solving Review', icon: <i className="bi bi-person-badge text-warning"></i> },
+    { value: 'Final HR Negotiation', label: 'Final HR Negotiation & Compensation Review', icon: <i className="bi bi-cash-stack text-success"></i> },
   ];
 
   const onlineMediumOptions = [
-    { value: 'Google Meet', label: 'Google Meet' },
-    { value: 'Microsoft Teams', label: 'Microsoft Teams' },
-    { value: 'Zoom Video', label: 'Zoom Video' },
+    { value: 'Google Meet', label: 'Google Meet', icon: <i className="bi bi-camera-video text-primary"></i> },
+    { value: 'Microsoft Teams', label: 'Microsoft Teams', icon: <i className="bi bi-microsoft text-info"></i> },
+    { value: 'Zoom Video', label: 'Zoom Video', icon: <i className="bi bi-camera-video-fill text-primary"></i> },
   ];
 
   const candidateOptions = allCandidates.map((c) => ({
@@ -660,6 +672,20 @@ export default function Interviews() {
                       <i className="bi bi-clipboard-check"></i>
                       <span>{isCompleted ? 'Scorecard' : 'Feedback'}</span>
                     </button>
+
+                    {/* Mark Complete button */}
+                    {!isCompleted && !isCancelled && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => handleMarkComplete(item)}
+                        style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', color: 'var(--success)' }}
+                        title="Mark interview round as completed"
+                      >
+                        <i className="bi bi-check2-circle"></i>
+                        <span>Complete</span>
+                      </button>
+                    )}
 
                     {/* Reschedule button */}
                     {!isCompleted && (

@@ -1,367 +1,758 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
+import { useAuth } from '../../context/AuthContext';
+import CustomSelect from '../../components/common/CustomSelect';
 
 const SkillsGap = () => {
+  const { user } = useAuth();
   const [searchParams] = useSearchParams();
   const roleParam = searchParams.get('role');
+  const analysisId = searchParams.get('id');
 
+  const [analysis, setAnalysis] = useState(null);
   const [dbJobs, setDbJobs] = useState([]);
-  const [targetProfile, setTargetProfile] = useState(roleParam || 'Java Developer');
+  const [selectedRole, setSelectedRole] = useState(roleParam || '');
+  const [activeTab, setActiveTab] = useState('all'); // 'all' | 'verified' | 'missing' | 'categories'
   const [loading, setLoading] = useState(true);
-  const [userSkills, setUserSkills] = useState(['Java', 'Spring Boot', 'Hibernate', 'SQL', 'Git', 'Maven']);
-
-  const defaultDbJobs = [
-    {
-      id: 1,
-      title: 'Java Developer',
-      department: 'Engineering',
-      requiredSkills: 'Java, Spring Boot, Hibernate, REST APIs, SQL, Git, Docker, Kubernetes',
-    },
-    {
-      id: 2,
-      title: 'Spring Boot Developer',
-      department: 'Engineering',
-      requiredSkills: 'Spring Boot, Microservices, Docker, PostgreSQL, Kafka, JUnit, AWS',
-    },
-    {
-      id: 3,
-      title: 'Full Stack Developer',
-      department: 'Engineering',
-      requiredSkills: 'React, Node.js, Express, MongoDB, JavaScript, TypeScript, CSS3',
-    },
-    {
-      id: 4,
-      title: 'DevOps Engineer',
-      department: 'Infrastructure',
-      requiredSkills: 'AWS, Docker, Kubernetes, Terraform, CI/CD, Linux, Prometheus',
-    },
-    {
-      id: 5,
-      title: 'Data Analyst',
-      department: 'Data & Analytics',
-      requiredSkills: 'Python, SQL, Tableau, Pandas, Power BI, Statistics, ETL',
-    },
-  ];
 
   useEffect(() => {
     let isMounted = true;
-    const fetchData = async () => {
+    const fetchAllData = async () => {
+      setLoading(true);
       try {
-        const [jobsRes, historyRes] = await Promise.allSettled([
-          api.get('/jobs'),
-          api.get('/dashboard/history'),
-        ]);
+        const activeEmail = user?.email
+          ? user.email.trim().toLowerCase()
+          : (typeof window !== 'undefined'
+              ? (sessionStorage.getItem('smarthire_user_email') || localStorage.getItem('smarthire_user_email') || '')
+              : '');
 
-        if (isMounted) {
-          if (jobsRes.status === 'fulfilled') {
-            const list = jobsRes.value.data?.jobs || (Array.isArray(jobsRes.value.data) ? jobsRes.value.data : []);
-            if (list.length > 0) {
-              setDbJobs(list);
-              if (roleParam) {
-                const found = list.find((j) => j.title.toLowerCase() === roleParam.toLowerCase());
-                if (found) setTargetProfile(found.title);
-              } else if (!targetProfile) {
-                setTargetProfile(list[0].title);
-              }
-            } else {
-              setDbJobs(defaultDbJobs);
+        // 1. Fetch available jobs for comparison benchmarks
+        const jobsPromise = api.get('/jobs').catch(() => ({ data: [] }));
+
+        // 2. Fetch analysis (either by ID or latest from history)
+        let analysisData = null;
+        if (analysisId) {
+          try {
+            const singleRes = await api.get(`/analysis/${analysisId}`);
+            if (singleRes.data) {
+              analysisData = singleRes.data.analysis || singleRes.data;
             }
+          } catch (e) {
+            console.warn('Direct analysis fetch failed, falling back to history', e);
           }
+        }
 
-          if (historyRes.status === 'fulfilled' && historyRes.value.data?.history?.length > 0) {
-            const latest = historyRes.value.data.history[0];
-            const extracted = latest.matchedSkillsList || latest.matchedSkills || [];
-            if (extracted.length > 0) {
-              setUserSkills(extracted);
+        if (!analysisData) {
+          const histRes = await api.get('/dashboard/history', {
+            params: activeEmail ? { email: activeEmail } : {},
+          }).catch(() => ({ data: [] }));
+          const list = Array.isArray(histRes.data) ? histRes.data : (histRes.data?.history || []);
+          if (list.length > 0) {
+            const latest = list[0];
+            if (latest.analysisJson) {
+              try {
+                const parsed = JSON.parse(latest.analysisJson);
+                parsed.id = parsed.id || latest.id;
+                analysisData = parsed;
+              } catch (err) {
+                analysisData = latest;
+              }
+            } else if (latest.id) {
+              const singleRes = await api.get(`/analysis/${latest.id}`).catch(() => null);
+              analysisData = singleRes?.data?.analysis || singleRes?.data || latest;
+            } else {
+              analysisData = latest;
             }
           }
         }
+
+        const [jobsRes] = await Promise.all([jobsPromise]);
+
+        if (isMounted) {
+          const jobsList = jobsRes.data?.jobs || (Array.isArray(jobsRes.data) ? jobsRes.data : []);
+          setDbJobs(jobsList);
+
+          if (analysisData) {
+            setAnalysis(analysisData);
+            const initialRole = roleParam || analysisData.targetJobRole || (jobsList.length > 0 ? jobsList[0].title : 'Java Developer');
+            setSelectedRole(initialRole);
+          } else if (jobsList.length > 0) {
+            setSelectedRole(roleParam || jobsList[0].title);
+          }
+        }
       } catch (err) {
-        if (isMounted) setDbJobs(defaultDbJobs);
+        console.error('Failed to load skills gap data:', err);
       } finally {
         if (isMounted) setLoading(false);
       }
     };
-    fetchData();
+
+    fetchAllData();
     return () => {
       isMounted = false;
     };
-  }, [roleParam]);
+  }, [analysisId, roleParam, user]);
 
-  const activeJobs = dbJobs.length > 0 ? dbJobs : defaultDbJobs;
-  const currentJob = activeJobs.find(
-    (j) => j.title.toLowerCase() === targetProfile.toLowerCase()
-  ) || activeJobs[0];
+  // Extract candidate details
+  const candidateName = analysis?.candidateName || analysis?.candidate?.name || '';
+  const effScore = analysis?.overallScore ?? analysis?.atsScore ?? 85;
+  const analyzedRole = analysis?.targetJobRole || 'Software Professional';
 
-  const jobSkills = currentJob.requiredSkills
-    ? currentJob.requiredSkills.split(',').map((s) => s.trim()).filter(Boolean)
-    : ['Java', 'Spring Boot', 'SQL', 'Docker', 'Kubernetes'];
+  // Extract all detected verified skills from resume (all 30+ skills)
+  const candidateVerifiedSkills = useMemo(() => {
+    if (!analysis) return [];
+    const raw = analysis.matchedSkillsList || analysis.skillsAnalysis?.matchedSkills || analysis.matchedSkills || [];
+    return Array.from(new Set(raw.map((s) => (typeof s === 'object' ? s.name || s.skill : String(s)).trim()))).filter(Boolean);
+  }, [analysis]);
 
-  const verifiedSkills = jobSkills
-    .filter((sk) =>
-      userSkills.some((us) => us.toLowerCase().includes(sk.toLowerCase()) || sk.toLowerCase().includes(us.toLowerCase()))
-    )
-    .map((name) => ({ name, proficiency: 'Intermediate - Advanced', verified: true }));
+  // Extract missing skills directly identified by AI analysis
+  const candidateMissingSkills = useMemo(() => {
+    if (!analysis) return [];
+    const raw = analysis.missingSkillsList || analysis.skillsAnalysis?.missingSkills || analysis.missingSkills || [];
+    return raw.map((s) => {
+      if (typeof s === 'object' && s !== null) {
+        return {
+          name: s.skill || s.name || 'Required Competency',
+          priority: s.priority || 'HIGH',
+          reason: s.reason || `Core qualification filter for ${analyzedRole} candidates.`,
+        };
+      }
+      return {
+        name: String(s),
+        priority: 'HIGH',
+        reason: `Expected keyword requirement for ${analyzedRole} screening algorithms.`,
+      };
+    });
+  }, [analysis, analyzedRole]);
 
-  const missingSkills = jobSkills
-    .filter(
-      (sk) =>
-        !userSkills.some((us) => us.toLowerCase().includes(sk.toLowerCase()) || sk.toLowerCase().includes(us.toLowerCase()))
-    )
-    .map((name, idx) => ({
-      name,
-      priority: idx < 2 ? 'HIGH' : 'MEDIUM',
-      description: `Required for ${currentJob.title} requisitions and modern production environments.`,
-      recommendation: `Add hands-on projects and relevant keywords demonstrating ${name} in your experience section.`,
-    }));
+  // Find job definition if comparing with a database vacancy
+  const activeJob = useMemo(() => {
+    if (!dbJobs || dbJobs.length === 0) return null;
+    return dbJobs.find((j) => j.title.toLowerCase() === selectedRole.toLowerCase()) || null;
+  }, [dbJobs, selectedRole]);
 
-  const totalSkills = verifiedSkills.length + missingSkills.length;
-  const matchPercent = totalSkills > 0 ? Math.round((verifiedSkills.length / totalSkills) * 100) : 75;
+  // Dynamic Skill Gap Calculation for current selectedRole
+  const { roleVerifiedSkills, roleMissingSkills, roleMatchPercent } = useMemo(() => {
+    // If selectedRole matches analyzed target job role
+    if (selectedRole.toLowerCase() === analyzedRole.toLowerCase() || !activeJob) {
+      const verified = candidateVerifiedSkills.map((name) => ({
+        name,
+        verified: true,
+        source: 'Resume Text & AI Analysis',
+      }));
+      const missing = candidateMissingSkills.map((sk) => ({
+        ...sk,
+        verified: false,
+      }));
+      const total = verified.length + missing.length;
+      const pct = total > 0 ? Math.round((verified.length / total) * 100) : effScore;
+      return {
+        roleVerifiedSkills: verified,
+        roleMissingSkills: missing,
+        roleMatchPercent: Math.min(100, Math.max(effScore, pct)),
+      };
+    }
+
+    // If comparing against an active company job requisition
+    const reqSkills = activeJob.requiredSkills
+      ? activeJob.requiredSkills.split(',').map((s) => s.trim()).filter(Boolean)
+      : [];
+
+    const verified = [];
+    const missing = [];
+
+    reqSkills.forEach((req) => {
+      const match = candidateVerifiedSkills.find(
+        (cv) => cv.toLowerCase() === req.toLowerCase() || cv.toLowerCase().includes(req.toLowerCase()) || req.toLowerCase().includes(cv.toLowerCase())
+      );
+      if (match) {
+        verified.push({ name: req, verified: true, source: `Matches verified skill: ${match}` });
+      } else {
+        missing.push({
+          name: req,
+          priority: 'HIGH',
+          reason: `Required for ${activeJob.title} requisition in ${activeJob.department || 'Engineering'}.`,
+          verified: false,
+        });
+      }
+    });
+
+    const total = verified.length + missing.length;
+    const pct = total > 0 ? Math.round((verified.length / total) * 100) : 50;
+
+    return {
+      roleVerifiedSkills: verified,
+      roleMissingSkills: missing,
+      roleMatchPercent: pct,
+    };
+  }, [selectedRole, analyzedRole, activeJob, candidateVerifiedSkills, candidateMissingSkills, effScore]);
+
+  // Skill categorization taxonomy
+  const categorizedSkills = useMemo(() => {
+    const categories = {
+      'Programming Languages & Core CS': [],
+      'Backend & Web Frameworks': [],
+      'Databases & Persistence': [],
+      'Tools, DevOps & AI': [],
+    };
+
+    candidateVerifiedSkills.forEach((sk) => {
+      const s = sk.toLowerCase();
+      if (
+        s.includes('java') ||
+        s === 'c' ||
+        s === 'c++' ||
+        s.includes('javascript') ||
+        s.includes('python') ||
+        s.includes('oop') ||
+        s.includes('dsa') ||
+        s.includes('multithreading') ||
+        s.includes('collections') ||
+        s.includes('exception')
+      ) {
+        categories['Programming Languages & Core CS'].push(sk);
+      } else if (
+        s.includes('spring') ||
+        s.includes('rest') ||
+        s.includes('servlet') ||
+        s.includes('jsp') ||
+        s.includes('html') ||
+        s.includes('css') ||
+        s.includes('react')
+      ) {
+        categories['Backend & Web Frameworks'].push(sk);
+      } else if (
+        s.includes('sql') ||
+        s.includes('mysql') ||
+        s.includes('jdbc') ||
+        s.includes('database') ||
+        s.includes('mongodb')
+      ) {
+        categories['Databases & Persistence'].push(sk);
+      } else {
+        categories['Tools, DevOps & AI'].push(sk);
+      }
+    });
+
+    return categories;
+  }, [candidateVerifiedSkills]);
 
   return (
-    <div>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', paddingBottom: '40px' }}>
       {/* Breadcrumbs */}
       <nav className="breadcrumb" style={{ marginBottom: '20px' }}>
         <Link to="/dashboard">Dashboard</Link>
+        <span className="breadcrumb-separator">/</span>
+        <Link to="/dashboard/resumeanalyzer">Resume Analyzer</Link>
         <span className="breadcrumb-separator">/</span>
         <span className="breadcrumb-current">Skills Gap Analysis</span>
       </nav>
 
       {/* Page Header */}
-      <div className="page-header-row">
+      <div className="page-header-row" style={{ marginBottom: '24px' }}>
         <div>
-          <h1 className="page-title">Skills Gap Analysis</h1>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+            <span className="badge badge-primary">
+              <i className="bi bi-graph-up-arrow"></i> TALENT INTELLIGENCE
+            </span>
+            {analysis?.id && (
+              <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>
+                ANALYSIS ID #{analysis.id}
+              </span>
+            )}
+          </div>
+          <h1 className="page-title">Skills Gap Analysis &amp; Competency Matrix</h1>
           <p className="page-subtitle">
-            Identify exactly which core and preferred skills are missing from your resume for your target role.
+            Deep-dive comparison between verified resume competencies and target industry requisitions for{' '}
+            <strong>{candidateName || 'Candidate'}</strong>.
           </p>
         </div>
         <div className="page-header-actions">
           <Link
-            className="btn btn-primary"
-            to={`/dashboard/resumeanalyzer?role=${encodeURIComponent(currentJob.title)}`}
+            className="btn btn-secondary"
+            to={`/dashboard/resumeimprovement${analysis?.id ? `?id=${analysis.id}` : ''}`}
           >
-            <i className="bi bi-cpu"></i> Re-scan for this Job
+            <i className="bi bi-magic"></i> View Improvement Plan
+          </Link>
+          <Link
+            className="btn btn-primary"
+            to={`/dashboard/resumeanalyzer?role=${encodeURIComponent(selectedRole)}`}
+          >
+            <i className="bi bi-cpu"></i> Re-scan for this Role
           </Link>
         </div>
       </div>
 
-      {/* Target Role Selector Bar */}
-      <article className="card" style={{ marginBottom: '24px', padding: '18px 24px' }}>
-        <div
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            flexWrap: 'wrap',
-            gap: '16px',
-          }}
-        >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-            <span style={{ fontSize: '1.5rem', color: 'var(--accent)' }}>
-              <i className="bi bi-bullseye"></i>
-            </span>
-            <div>
-              <strong style={{ fontSize: '0.95rem', color: 'var(--text-primary)' }}>
-                Evaluating Against Database Role:
-              </strong>
-              <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
-                Skills benchmark dynamically derived from backend job requisition requirements
-              </p>
-            </div>
+      {loading ? (
+        <div className="card" style={{ padding: '60px 20px', textAlign: 'center' }}>
+          <div className="spinner-border text-primary" role="status" style={{ width: '3rem', height: '3rem', margin: '0 auto 16px' }}></div>
+          <h3 style={{ fontSize: '1.2rem', fontWeight: 700 }}>Calculating Dynamic Skills Gap Matrix...</h3>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+            Benchmarking 30+ verified competencies against live industry requisitions...
+          </p>
+        </div>
+      ) : !analysis ? (
+        <div className="card" style={{ padding: '50px 24px', textAlign: 'center' }}>
+          <div style={{ fontSize: '3rem', color: 'var(--accent)', marginBottom: '16px' }}>
+            <i className="bi bi-bullseye"></i>
           </div>
-          <div style={{ flex: '1 1 240px', minWidth: 'min(280px, 100%)', maxWidth: '380px' }}>
-            <select
-              className="form-control"
-              value={targetProfile}
-              onChange={(e) => setTargetProfile(e.target.value)}
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 800, marginBottom: '8px' }}>
+            No Resume Skills Analyzed Yet
+          </h2>
+          <p style={{ maxWidth: '520px', margin: '0 auto 24px', color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
+            Upload your resume in the Resume Analyzer to extract your verified skills and evaluate your real competency match against any role.
+          </p>
+          <Link to="/dashboard/resumeanalyzer" className="btn btn-primary" style={{ padding: '10px 24px' }}>
+            <i className="bi bi-cloud-arrow-up" style={{ marginRight: '8px' }}></i> Analyze Resume Now
+          </Link>
+        </div>
+      ) : (
+        <>
+          {/* Target Role & Benchmark Selector Card */}
+          <article className="card" style={{ marginBottom: '24px', padding: '18px 24px' }}>
+            <div
               style={{
-                width: '100%',
-                padding: '9px 14px',
-                border: '1px solid var(--border-color)',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--bg-input)',
-                color: 'var(--text-primary)',
-                fontSize: '0.88rem',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                flexWrap: 'wrap',
+                gap: '16px',
               }}
             >
-              {activeJobs.map((j) => (
-                <option key={j.id} value={j.title}>
-                  {j.title} ({j.department})
-                </option>
-              ))}
-            </select>
-          </div>
-        </div>
-      </article>
-
-      {/* Skills Coverage KPIs */}
-      <section className="stats-grid-4" style={{ marginBottom: '28px' }}>
-        <article className="stat-card">
-          <div className="stat-top">
-            <span className="stat-label">Role Skills Match</span>
-            <span className="stat-icon icon-green">
-              <i className="bi bi-bullseye"></i>
-            </span>
-          </div>
-          <div className="stat-value" style={{ color: 'var(--success)' }}>
-            {matchPercent}%
-          </div>
-          <span className="stat-unit">
-            {verifiedSkills.length} of {totalSkills} skills verified
-          </span>
-        </article>
-
-        <article className="stat-card">
-          <div className="stat-top">
-            <span className="stat-label">Verified Present</span>
-            <span className="stat-icon icon-navy">
-              <i className="bi bi-check-lg"></i>
-            </span>
-          </div>
-          <div className="stat-value">{verifiedSkills.length}</div>
-          <span className="stat-unit">Found in resume analysis</span>
-        </article>
-
-        <article className="stat-card">
-          <div className="stat-top">
-            <span className="stat-label">Critical Missing Skills</span>
-            <span className="stat-icon" style={{ background: 'var(--warning-bg)', color: 'var(--warning)' }}>
-              <i className="bi bi-exclamation-triangle"></i>
-            </span>
-          </div>
-          <div className="stat-value" style={{ color: 'var(--warning)' }}>
-            {missingSkills.length}
-          </div>
-          <span className="stat-unit">Required for {currentJob.title}</span>
-        </article>
-
-        <article className="stat-card">
-          <div className="stat-top">
-            <span className="stat-label">Recommended Action</span>
-            <span className="stat-icon icon-info">
-              <i className="bi bi-lightbulb"></i>
-            </span>
-          </div>
-          <div className="stat-value" style={{ fontSize: '1.2rem' }}>
-            {missingSkills.length > 0 ? `${Math.min(missingSkills.length, 3)} Topics` : 'Ready to Apply'}
-          </div>
-          <span className="stat-unit">To achieve 90%+ match score</span>
-        </article>
-      </section>
-
-      {/* Grid: Verified Skills vs Missing Skills */}
-      <div className="grid-1-1" style={{ gap: '24px' }}>
-        {/* Present Skills */}
-        <article className="card">
-          <div className="card-header">
-            <div>
-              <span className="badge badge-success">
-                <i className="bi bi-check2"></i> DETECTED
-              </span>
-              <h2 className="card-title" style={{ marginTop: '6px' }}>
-                Verified Skills Present in Resume
-              </h2>
-            </div>
-            <span className="count-badge count-success">{verifiedSkills.length}</span>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-            {verifiedSkills.length > 0 ? (
-              verifiedSkills.map((sk, idx) => (
-                <div
-                  key={idx}
-                  style={{
-                    display: 'flex',
-                    justifyContent: 'space-between',
-                    alignItems: 'center',
-                    padding: '12px 14px',
-                    background: 'var(--bg-secondary)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-color)',
-                  }}
-                >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ color: 'var(--success)', fontSize: '1.1rem' }}>
-                      <i className="bi bi-check-circle-fill"></i>
-                    </span>
-                    <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>{sk.name}</strong>
-                  </div>
-                  <span className="badge badge-neutral" style={{ fontSize: '0.75rem' }}>
-                    {sk.proficiency}
-                  </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
+                <span style={{ fontSize: '1.6rem', color: 'var(--accent)' }}>
+                  <i className="bi bi-bullseye"></i>
+                </span>
+                <div>
+                  <strong style={{ fontSize: '0.96rem', color: 'var(--text-primary)', display: 'block' }}>
+                    Comparing Skills Against Role Benchmark:
+                  </strong>
+                  <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                    Switch roles to evaluate how your current {candidateVerifiedSkills.length} verified competencies map to different engineering tracks.
+                  </p>
                 </div>
-              ))
-            ) : (
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-                No exact skills overlap detected yet for this role.
-              </p>
-            )}
-          </div>
-        </article>
+              </div>
 
-        {/* Missing Skills */}
-        <article className="card">
-          <div className="card-header">
-            <div>
-              <span className="badge badge-warning">
-                <i className="bi bi-exclamation-triangle"></i> ACTION NEEDED
-              </span>
-              <h2 className="card-title" style={{ marginTop: '6px' }}>
-                High-Impact Missing Skills for {currentJob.title}
-              </h2>
+              <div style={{ flex: '1 1 260px', maxWidth: '400px' }}>
+                <CustomSelect
+                  value={selectedRole}
+                  onChange={(val) => setSelectedRole(val)}
+                  options={[
+                    {
+                      isHeader: true,
+                      label: 'Analyzed Resume Target Role',
+                    },
+                    {
+                      value: analyzedRole,
+                      label: `${analyzedRole} (From Resume Analysis #${analysis.id})`,
+                      badge: 'Target Role',
+                      icon: <i className="bi bi-file-earmark-person text-primary"></i>,
+                    },
+                    ...(dbJobs.length > 0
+                      ? [
+                          { isHeader: true, label: 'Active Company Vacancies' },
+                          ...dbJobs.map((j) => ({
+                            value: j.title,
+                            label: `${j.title} (${j.department || 'Engineering'})`,
+                            badge: `${j.openings || 1} open`,
+                            icon: <i className="bi bi-briefcase text-accent"></i>,
+                          })),
+                        ]
+                      : []),
+                  ]}
+                  placeholder="Select Role Benchmark..."
+                />
+              </div>
             </div>
-            <span className="count-badge count-warning">{missingSkills.length}</span>
-          </div>
+          </article>
 
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-            {missingSkills.length > 0 ? (
-              missingSkills.map((item, idx) => (
-                <div
-                  key={idx}
+          {/* 4 Modern SaaS KPI Metric Cards */}
+          <section className="stats-grid-4" style={{ marginBottom: '28px' }}>
+            <article className="stat-card">
+              <div className="stat-top">
+                <span className="stat-label">Competency Match Index</span>
+                <span className="stat-icon icon-green">
+                  <i className="bi bi-bullseye"></i>
+                </span>
+              </div>
+              <div
+                className="stat-value"
+                style={{
+                  color: roleMatchPercent >= 75 ? 'var(--success)' : roleMatchPercent >= 50 ? 'var(--warning)' : '#dc2626',
+                }}
+              >
+                {roleMatchPercent}%
+              </div>
+              <span className="stat-unit">
+                {roleVerifiedSkills.length} of {roleVerifiedSkills.length + roleMissingSkills.length} required skills verified
+              </span>
+            </article>
+
+            <article className="stat-card">
+              <div className="stat-top">
+                <span className="stat-label">Verified Resume Skills</span>
+                <span className="stat-icon icon-navy">
+                  <i className="bi bi-patch-check-fill"></i>
+                </span>
+              </div>
+              <div className="stat-value" style={{ color: 'var(--primary)' }}>
+                {candidateVerifiedSkills.length}
+              </div>
+              <span className="stat-unit">Extracted across 4 technical domains</span>
+            </article>
+
+            <article className="stat-card">
+              <div className="stat-top">
+                <span className="stat-label">Critical Skill Gaps</span>
+                <span
+                  className="stat-icon"
                   style={{
-                    padding: '14px',
-                    background: 'var(--bg-secondary)',
-                    borderRadius: 'var(--radius-md)',
-                    border: '1px solid var(--border-color)',
+                    background: roleMissingSkills.length > 0 ? 'var(--warning-bg, #fef3c7)' : 'rgba(34, 197, 94, 0.1)',
+                    color: roleMissingSkills.length > 0 ? 'var(--warning, #d97706)' : 'var(--success)',
                   }}
                 >
+                  <i className={roleMissingSkills.length > 0 ? 'bi bi-exclamation-triangle-fill' : 'bi bi-check-all'}></i>
+                </span>
+              </div>
+              <div
+                className="stat-value"
+                style={{ color: roleMissingSkills.length > 0 ? 'var(--warning)' : 'var(--success)' }}
+              >
+                {roleMissingSkills.length}
+              </div>
+              <span className="stat-unit">
+                {roleMissingSkills.length > 0 ? `Required for ${selectedRole}` : 'Zero critical gaps detected!'}
+              </span>
+            </article>
+
+            <article className="stat-card">
+              <div className="stat-top">
+                <span className="stat-label">ATS Candidate Tier</span>
+                <span className="stat-icon icon-info">
+                  <i className="bi bi-award-fill"></i>
+                </span>
+              </div>
+              <div className="stat-value" style={{ fontSize: '1.25rem' }}>
+                {roleMatchPercent >= 80 ? 'Top 15% Candidate' : roleMatchPercent >= 65 ? 'Competitive Candidate' : 'Upskilling Needed'}
+              </div>
+              <span className="stat-unit">Based on verified keyword density</span>
+            </article>
+          </section>
+
+          {/* Interactive Filter Navigation Tabs */}
+          <div
+            style={{
+              display: 'flex',
+              gap: '8px',
+              borderBottom: '1px solid var(--border-color)',
+              marginBottom: '24px',
+              overflowX: 'auto',
+              paddingBottom: '2px',
+            }}
+          >
+            <button
+              type="button"
+              className={`btn btn-sm ${activeTab === 'all' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setActiveTab('all')}
+              style={{ borderRadius: '8px', padding: '8px 16px', fontWeight: 600 }}
+            >
+              All Competencies ({candidateVerifiedSkills.length + roleMissingSkills.length})
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${activeTab === 'verified' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setActiveTab('verified')}
+              style={{ borderRadius: '8px', padding: '8px 16px', fontWeight: 600 }}
+            >
+              <i className="bi bi-check2-circle" style={{ marginRight: '6px' }}></i>
+              Verified in Resume ({candidateVerifiedSkills.length})
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${activeTab === 'missing' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setActiveTab('missing')}
+              style={{ borderRadius: '8px', padding: '8px 16px', fontWeight: 600 }}
+            >
+              <i className="bi bi-exclamation-triangle" style={{ marginRight: '6px' }}></i>
+              Skill Gaps to Bridge ({roleMissingSkills.length})
+            </button>
+            <button
+              type="button"
+              className={`btn btn-sm ${activeTab === 'categories' ? 'btn-primary' : 'btn-ghost'}`}
+              onClick={() => setActiveTab('categories')}
+              style={{ borderRadius: '8px', padding: '8px 16px', fontWeight: 600 }}
+            >
+              <i className="bi bi-grid-3x3-gap" style={{ marginRight: '6px' }}></i>
+              Domain Matrix
+            </button>
+          </div>
+
+          {/* TAB 1: ALL & VERIFIED vs MISSING COMPARISON */}
+          {(activeTab === 'all' || activeTab === 'verified' || activeTab === 'missing') && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns:
+                  activeTab === 'all'
+                    ? 'repeat(auto-fit, minmax(min(100%, 460px), 1fr))'
+                    : '1fr',
+                gap: '24px',
+                marginBottom: '28px',
+              }}
+            >
+              {/* Verified Skills Panel */}
+              {(activeTab === 'all' || activeTab === 'verified') && (
+                <article className="card" style={{ padding: '24px' }}>
                   <div
                     style={{
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      marginBottom: '6px',
+                      borderBottom: '1px solid var(--border-color)',
+                      paddingBottom: '14px',
+                      marginBottom: '16px',
                     }}
                   >
-                    <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>{item.name}</strong>
-                    <span className="badge badge-warning">{item.priority} PRIORITY</span>
+                    <div>
+                      <span className="badge badge-success">
+                        <i className="bi bi-check-circle-fill" style={{ marginRight: '4px' }}></i>
+                        DETECTED &amp; VERIFIED
+                      </span>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '6px 0 2px' }}>
+                        Skills Present in Candidate Resume
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                        Cross-referenced from resume text, project descriptions, and technical profiles.
+                      </p>
+                    </div>
+                    <span className="count-badge count-success" style={{ fontSize: '0.9rem', padding: '4px 10px' }}>
+                      {candidateVerifiedSkills.length}
+                    </span>
                   </div>
-                  <p style={{ fontSize: '0.8rem', color: 'var(--text-secondary)', margin: '0 0 8px' }}>
-                    {item.description}
-                  </p>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                    {candidateVerifiedSkills.map((sk, idx) => (
+                      <span
+                        key={idx}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          gap: '6px',
+                          background: 'rgba(34, 197, 94, 0.08)',
+                          color: '#15803d',
+                          border: '1px solid rgba(34, 197, 94, 0.25)',
+                          borderRadius: '6px',
+                          padding: '6px 12px',
+                          fontSize: '0.82rem',
+                          fontWeight: 600,
+                        }}
+                      >
+                        <i className="bi bi-check-lg" style={{ fontSize: '0.9rem', fontWeight: 900 }}></i>
+                        {sk}
+                      </span>
+                    ))}
+                  </div>
+                </article>
+              )}
+
+              {/* Missing Skills Gap Panel */}
+              {(activeTab === 'all' || activeTab === 'missing') && (
+                <article className="card" style={{ padding: '24px' }}>
                   <div
                     style={{
-                      fontSize: '0.78rem',
-                      color: 'var(--accent)',
-                      background: 'var(--bg-card)',
-                      padding: '8px 10px',
-                      borderRadius: '6px',
-                      border: '1px dashed var(--accent)',
+                      display: 'flex',
+                      justifyContent: 'space-between',
+                      alignItems: 'center',
+                      borderBottom: '1px solid var(--border-color)',
+                      paddingBottom: '14px',
+                      marginBottom: '16px',
                     }}
                   >
-                    <strong>Suggested Fix:</strong> {item.recommendation}
+                    <div>
+                      <span className="badge badge-warning">
+                        <i className="bi bi-exclamation-triangle" style={{ marginRight: '4px' }}></i>
+                        HIGH-IMPACT GAPS
+                      </span>
+                      <h3 style={{ fontSize: '1.15rem', fontWeight: 800, margin: '6px 0 2px' }}>
+                        Identified Gaps for {selectedRole}
+                      </h3>
+                      <p style={{ margin: 0, fontSize: '0.82rem', color: 'var(--text-secondary)' }}>
+                        Core requirements not detected in current resume that trigger ATS parser deductions.
+                      </p>
+                    </div>
+                    <span className="count-badge count-warning" style={{ fontSize: '0.9rem', padding: '4px 10px' }}>
+                      {roleMissingSkills.length}
+                    </span>
                   </div>
-                </div>
-              ))
-            ) : (
-              <p style={{ color: 'var(--success)', fontSize: '0.85rem' }}>
-                Awesome! You have all required skills for this position.
+
+                  {roleMissingSkills.length > 0 ? (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                      {roleMissingSkills.map((item, idx) => (
+                        <div
+                          key={idx}
+                          style={{
+                            background: 'var(--bg-secondary)',
+                            borderRadius: 'var(--radius-md)',
+                            border: '1px solid var(--border-color)',
+                            padding: '16px',
+                          }}
+                        >
+                          <div
+                            style={{
+                              display: 'flex',
+                              justifyContent: 'space-between',
+                              alignItems: 'center',
+                              marginBottom: '6px',
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                              <strong style={{ fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                                {item.name}
+                              </strong>
+                              <span
+                                className="badge"
+                                style={{
+                                  background: item.priority === 'HIGH' ? '#fee2e2' : '#fef3c7',
+                                  color: item.priority === 'HIGH' ? '#dc2626' : '#d97706',
+                                  fontSize: '0.68rem',
+                                  fontWeight: 700,
+                                }}
+                              >
+                                {item.priority} PRIORITY
+                              </span>
+                            </div>
+                            <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>
+                              +6% ATS Boost
+                            </span>
+                          </div>
+
+                          <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', margin: '0 0 10px' }}>
+                            {item.reason}
+                          </p>
+
+                          <div
+                            style={{
+                              fontSize: '0.8rem',
+                              color: 'var(--accent)',
+                              background: 'var(--bg-card)',
+                              padding: '8px 12px',
+                              borderRadius: '6px',
+                              border: '1px dashed var(--accent)',
+                            }}
+                          >
+                            <strong>Action:</strong> Add a bullet point demonstrating hands-on experience or project implementation with {item.name}.
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div
+                      style={{
+                        padding: '30px 20px',
+                        textAlign: 'center',
+                        background: 'rgba(34, 197, 94, 0.06)',
+                        border: '1px solid rgba(34, 197, 94, 0.2)',
+                        borderRadius: 'var(--radius-md)',
+                      }}
+                    >
+                      <i className="bi bi-shield-check text-success" style={{ fontSize: '2.5rem', marginBottom: '8px', display: 'block' }}></i>
+                      <strong style={{ fontSize: '1rem', color: 'var(--text-primary)', display: 'block' }}>
+                        Zero Skill Gaps Detected for {selectedRole}!
+                      </strong>
+                      <p style={{ margin: '4px 0 0', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+                        Your resume verified skills fulfill 100% of the screening requisitions for this target profile.
+                      </p>
+                    </div>
+                  )}
+                </article>
+              )}
+            </div>
+          )}
+
+          {/* TAB 4: CATEGORIZED DOMAIN MATRIX */}
+          {activeTab === 'categories' && (
+            <div
+              style={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 280px), 1fr))',
+                gap: '20px',
+                marginBottom: '28px',
+              }}
+            >
+              {Object.entries(categorizedSkills).map(([catName, skills]) => (
+                <article key={catName} className="card" style={{ padding: '20px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                    <h4 style={{ fontSize: '0.98rem', fontWeight: 800, margin: 0, color: 'var(--text-primary)' }}>
+                      {catName}
+                    </h4>
+                    <span className="badge badge-neutral" style={{ fontSize: '0.72rem' }}>
+                      {skills.length} verified
+                    </span>
+                  </div>
+
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                    {skills.length > 0 ? (
+                      skills.map((s, i) => (
+                        <span
+                          key={i}
+                          style={{
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-color)',
+                            borderRadius: '6px',
+                            padding: '4px 10px',
+                            fontSize: '0.78rem',
+                            color: 'var(--text-primary)',
+                            fontWeight: 500,
+                          }}
+                        >
+                          {s}
+                        </span>
+                      ))
+                    ) : (
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                        No skills detected in this category.
+                      </span>
+                    )}
+                  </div>
+                </article>
+              ))}
+            </div>
+          )}
+
+          {/* Bottom Callout Banner */}
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              flexWrap: 'wrap',
+              gap: '16px',
+              padding: '20px 24px',
+              background: 'var(--bg-card)',
+              borderRadius: 'var(--radius-lg)',
+              border: '1px solid var(--border-color)',
+            }}
+          >
+            <div>
+              <strong style={{ fontSize: '0.96rem', color: 'var(--text-primary)' }}>
+                Want to Bridge Your Missing Skills?
+              </strong>
+              <p style={{ margin: '2px 0 0', fontSize: '0.84rem', color: 'var(--text-secondary)' }}>
+                Access customized resume bullet rewriting, summary optimization, and ready-to-paste keyword templates.
               </p>
-            )}
+            </div>
+            <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+              <Link
+                to={`/dashboard/resumeimprovement${analysis?.id ? `?id=${analysis.id}` : ''}`}
+                className="btn btn-primary"
+              >
+                <i className="bi bi-box-arrow-up-right"></i> Open Resume Improvement Plan
+              </Link>
+            </div>
           </div>
-        </article>
-      </div>
+        </>
+      )}
     </div>
   );
 };

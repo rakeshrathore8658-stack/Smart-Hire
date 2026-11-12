@@ -27,6 +27,8 @@ const Candidates = () => {
   const [isDragging, setIsDragging] = useState(false);
   const [aiProvider, setAiProvider] = useState('local');
   const [aiModel, setAiModel] = useState('qwen3:4b');
+  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
+  const [geminiKey, setGeminiKey] = useState('');
   const [isScreening, setIsScreening] = useState(false);
   const [isMinimized, setIsMinimized] = useState(false);
   const [batchFinished, setBatchFinished] = useState(false);
@@ -90,10 +92,10 @@ const Candidates = () => {
   ];
 
   const scoreOptions = [
-    { value: '', label: 'All Match Scores' },
-    { value: 'high', label: 'Top Match (85%+)' },
-    { value: 'mid', label: 'Moderate Match (65-84%)' },
-    { value: 'low', label: 'Low Match (<65%)' },
+    { value: '', label: 'All Match Scores', icon: <i className="bi bi-filter"></i> },
+    { value: 'high', label: 'Top Match (85%+)', badge: '85%+', icon: <i className="bi bi-award-fill text-success"></i> },
+    { value: 'mid', label: 'Moderate Match (65-84%)', badge: '65-84%', icon: <i className="bi bi-shield-check text-warning"></i> },
+    { value: 'low', label: 'Low Match (<65%)', badge: '<65%', icon: <i className="bi bi-exclamation-circle text-danger"></i> },
   ];
 
   const toggleShortlist = async (id, e) => {
@@ -216,9 +218,10 @@ const Candidates = () => {
       }));
 
       try {
-        // Enforce strictly local AI models for bulk scanning
-        const effectiveProvider = aiProvider === 'ollama' ? 'ollama' : 'local';
-        const effectiveModel = aiProvider === 'ollama' ? (aiModel || 'qwen3:4b') : null;
+        const effectiveProvider = aiProvider;
+        const effectiveModel = aiProvider === 'gemini'
+          ? (geminiModel || 'gemini-2.5-flash')
+          : (aiProvider === 'ollama' ? (aiModel || 'qwen3:4b') : null);
 
         const formData = new FormData();
         formData.append('resumeFile', currentFile);
@@ -227,6 +230,9 @@ const Candidates = () => {
         formData.append('aiProvider', effectiveProvider);
         if (effectiveModel) {
           formData.append('model', effectiveModel);
+        }
+        if (aiProvider === 'gemini' && geminiKey) {
+          formData.append('geminiApiKey', geminiKey.trim());
         }
 
         const res = await api.post('/analysis/analyze', formData, {
@@ -242,7 +248,9 @@ const Candidates = () => {
           matchLevel: data?.matchLevel || (data?.overallScore >= 75 ? 'Strong Match' : 'Moderate Match'),
           skills: data?.matchedSkillsList || (data?.skillsAnalysis?.matchedSkills) || [],
           categoryScores: data?.categoryScores || {},
-          providerUsed: effectiveProvider === 'ollama' ? `Ollama (${effectiveModel})` : 'Local High-Precision NLP',
+          providerUsed: effectiveProvider === 'gemini'
+            ? `Google Gemini AI (${effectiveModel})`
+            : (effectiveProvider === 'ollama' ? `Ollama (${effectiveModel})` : 'Local High-Precision NLP'),
           status: 'success',
         };
         collectedResults.push(candidateItem);
@@ -447,7 +455,9 @@ const Candidates = () => {
             <table className="table" style={{ margin: 0 }}>
               <thead>
                 <tr>
-                  <th style={{ width: '40px', textAlign: 'center' }}>★</th>
+                  <th style={{ width: '40px', textAlign: 'center' }}>
+                    <i className="bi bi-star"></i>
+                  </th>
                   <th>Candidate</th>
                   <th>Target Job Role</th>
                   <th>Match Score</th>
@@ -865,19 +875,53 @@ const Candidates = () => {
                     </span>
                   </div>
 
-                  <select
-                    className="form-control"
+                  <CustomSelect
                     value={aiProvider}
-                    onChange={(e) => setAiProvider(e.target.value)}
-                    style={{ fontSize: '0.85rem', fontWeight: 600 }}
-                  >
-                    <option value="local">
-                      ⚡ Local High-Precision NLP Engine (Deep ATS Scoring, Fast &amp; Deterministic)
-                    </option>
-                    <option value="ollama">
-                      🧠 Local Ollama Deep LLM (Generative Neural ATS Reasoning &amp; Extraction)
-                    </option>
-                  </select>
+                    onChange={(val) => setAiProvider(val)}
+                    options={[
+                      {
+                        value: 'local',
+                        label: 'Local High-Precision NLP Engine (Deep ATS Scoring, Fast & Deterministic)',
+                        badge: 'Fast & Offline',
+                        icon: <i className="bi bi-cpu-fill text-primary"></i>,
+                      },
+                      {
+                        value: 'gemini',
+                        label: 'Google Gemini AI (High-Accuracy Neural Cloud Evaluation & Deep ATS Insights)',
+                        badge: 'Server Key',
+                        icon: <i className="bi bi-stars text-info"></i>,
+                      },
+                      {
+                        value: 'ollama',
+                        label: 'Local Ollama Deep LLM (Generative Neural ATS Reasoning & Extraction)',
+                        badge: 'Local Neural',
+                        icon: <i className="bi bi-robot text-accent"></i>,
+                      },
+                    ]}
+                  />
+
+                  {/* Gemini Server Environment confirmation banner (API Key input removed) */}
+                  {aiProvider === 'gemini' && (
+                    <div
+                      style={{
+                        marginTop: '10px',
+                        background: 'rgba(59, 130, 246, 0.08)',
+                        border: '1px solid rgba(59, 130, 246, 0.25)',
+                        borderRadius: 'var(--radius-sm)',
+                        padding: '8px 12px',
+                        fontSize: '0.8rem',
+                        color: 'var(--text-secondary)',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '8px',
+                      }}
+                    >
+                      <i className="bi bi-shield-check text-success" style={{ fontSize: '1.1rem' }}></i>
+                      <span>
+                        Gemini AI screening is enabled using the server-configured environment API key.
+                      </span>
+                    </div>
+                  )}
 
                   {/* Model variant selector if Ollama is selected */}
                   {aiProvider === 'ollama' && (
@@ -885,15 +929,22 @@ const Candidates = () => {
                       <label style={{ display: 'block', fontSize: '0.78rem', color: 'var(--text-secondary)', marginBottom: '4px', fontWeight: 600 }}>
                         Local Ollama Model Variant:
                       </label>
-                      <select
-                        className="form-control"
+                      <CustomSelect
                         value={aiModel}
-                        onChange={(e) => setAiModel(e.target.value)}
-                        style={{ fontSize: '0.82rem' }}
-                      >
-                        <option value="qwen3:4b">qwen3:4b (Installed - 4B High-Speed Reasoning Model)</option>
-                        <option value="codellama:latest">codellama:latest (Installed - 7B Deep Technical Code &amp; Resume Model)</option>
-                      </select>
+                        onChange={(val) => setAiModel(val)}
+                        options={[
+                          {
+                            value: 'qwen3:4b',
+                            label: 'qwen3:4b (Installed - 4B High-Speed Reasoning Model)',
+                            icon: <i className="bi bi-hdd-network"></i>,
+                          },
+                          {
+                            value: 'codellama:latest',
+                            label: 'codellama:latest (Installed - 7B Deep Technical Code & Resume Model)',
+                            icon: <i className="bi bi-code-slash"></i>,
+                          },
+                        ]}
+                      />
                     </div>
                   )}
 
@@ -904,7 +955,7 @@ const Candidates = () => {
                       border: '1px solid rgba(59, 130, 246, 0.25)',
                       borderRadius: 'var(--radius-sm)',
                       padding: '8px 12px',
-                      marginTop: '8px',
+                      marginTop: '10px',
                       fontSize: '0.78rem',
                       color: 'var(--text-secondary)',
                       display: 'flex',
@@ -912,9 +963,9 @@ const Candidates = () => {
                       gap: '8px',
                     }}
                   >
-                    <i className="bi bi-cpu-fill text-primary" style={{ fontSize: '1rem' }}></i>
+                    <i className="bi bi-shield-check text-primary" style={{ fontSize: '1rem' }}></i>
                     <span>
-                      Bulk screening is strictly restricted to <strong>Local AI Models</strong> running on your machine. Cloud APIs (Gemini) are excluded to ensure zero rate limits, no API quotas, and complete candidate data privacy.
+                      Bulk screening runs with automated batch parsing, extracting candidate credentials and scoring ATS relevance against the target role.
                     </span>
                   </div>
                 </div>
@@ -1177,7 +1228,7 @@ const Candidates = () => {
                         Active File: <strong style={{ color: 'var(--text-primary)' }}>{progress.currentFileName}</strong>
                       </div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        Target Vacancy: <strong>{targetJobObj?.title || 'Selected Vacancy'}</strong> • Engine: <strong>{aiProvider === 'ollama' ? `Local Ollama (${aiModel})` : 'Local Deep NLP'}</strong>
+                        Target Vacancy: <strong>{targetJobObj?.title || 'Selected Vacancy'}</strong> • Engine: <strong>{aiProvider === 'gemini' ? `Google Gemini (${geminiModel})` : (aiProvider === 'ollama' ? `Local Ollama (${aiModel})` : 'Local Deep NLP')}</strong>
                       </div>
                     </div>
                   </div>

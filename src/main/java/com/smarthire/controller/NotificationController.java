@@ -27,6 +27,16 @@ public class NotificationController {
     private String getActiveUserEmail() {
         try {
             ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+            if (attrs != null && attrs.getRequest() != null) {
+                String h = attrs.getRequest().getHeader("X-User-Email");
+                if (h != null && !h.isBlank()) {
+                    return h.trim().toLowerCase();
+                }
+            }
+        } catch (Exception ignored) {}
+
+        try {
+            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
             if (attrs != null && attrs.getRequest() != null && attrs.getRequest().getSession(false) != null) {
                 HttpSession session = attrs.getRequest().getSession(false);
                 String email = (String) session.getAttribute("userEmail");

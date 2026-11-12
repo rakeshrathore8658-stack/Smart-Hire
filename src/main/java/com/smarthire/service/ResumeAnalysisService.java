@@ -171,12 +171,16 @@ public class ResumeAnalysisService {
             entity.setCandidateEmailNormalized(normEmail);
             entity.setCandidatePhone(candPhone);
             entity.setCandidatePhoneNormalized(normPhone);
+            if (resume != null && resume.getUser() != null) {
+                entity.setUser(resume.getUser());
+            }
             // Recruitment status and interview details are preserved
         } else {
             log.info("Creating new application entry for candidate [{}] and role [{}]",
                     normEmail != null ? normEmail : normPhone, normRole);
             entity = ResumeAnalysis.builder()
                     .resume(resume)
+                    .user(resume != null ? resume.getUser() : null)
                     .targetJobRole(role)
                     .targetJobRoleNormalized(normRole)
                     .candidateName(normName)
@@ -277,7 +281,29 @@ public class ResumeAnalysisService {
 
     private ATSAnalysisDTO parseOrFallback(String json, CandidateInfoDTO candidate, String targetRole, String jobDesc) {
         try {
-            JsonNode root = objectMapper.readTree(json);
+            String cleanJson = json != null ? json.trim() : "";
+            if (cleanJson.contains("<think>")) {
+                int thinkEnd = cleanJson.lastIndexOf("</think>");
+                if (thinkEnd != -1) {
+                    cleanJson = cleanJson.substring(thinkEnd + 8).trim();
+                }
+            }
+            if (cleanJson.startsWith("```json")) {
+                cleanJson = cleanJson.substring(7);
+            } else if (cleanJson.startsWith("```")) {
+                cleanJson = cleanJson.substring(3);
+            }
+            if (cleanJson.endsWith("```")) {
+                cleanJson = cleanJson.substring(0, cleanJson.length() - 3);
+            }
+            cleanJson = cleanJson.trim();
+            int firstBrace = cleanJson.indexOf('{');
+            int lastBrace = cleanJson.lastIndexOf('}');
+            if (firstBrace != -1 && lastBrace > firstBrace) {
+                cleanJson = cleanJson.substring(firstBrace, lastBrace + 1).trim();
+            }
+
+            JsonNode root = objectMapper.readTree(cleanJson);
             ATSAnalysisDTO dto = objectMapper.treeToValue(root, ATSAnalysisDTO.class);
             dto.setCandidate(candidate);
             return dto;

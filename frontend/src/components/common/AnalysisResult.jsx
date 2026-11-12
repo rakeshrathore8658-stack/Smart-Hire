@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 
 const AnalysisResult = ({
@@ -9,6 +10,17 @@ const AnalysisResult = ({
 }) => {
   const [showImproveModal, setShowImproveModal] = useState(false);
   const [copiedKey, setCopiedKey] = useState(null);
+
+  useEffect(() => {
+    if (showImproveModal) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => {
+      document.body.style.overflow = '';
+    };
+  }, [showImproveModal]);
 
   if (!analysis) return null;
 
@@ -197,15 +209,17 @@ const AnalysisResult = ({
         <div className="score-gauge-card">
           <div className="radial-gauge-wrapper">
             <svg className="radial-gauge-svg" viewBox="0 0 120 120">
-              <circle className="gauge-bg" cx="60" cy="60" r="50"></circle>
-              <circle
-                className="gauge-fill"
-                id="gaugeFillCircle"
-                cx="60"
-                cy="60"
-                r="50"
-                style={{ strokeDashoffset: `${dashOffset}` }}
-              ></circle>
+              <g transform="rotate(-90 60 60)">
+                <circle className="gauge-bg" cx="60" cy="60" r="50"></circle>
+                <circle
+                  className="gauge-fill"
+                  id="gaugeFillCircle"
+                  cx="60"
+                  cy="60"
+                  r="50"
+                  style={{ strokeDashoffset: `${dashOffset}` }}
+                ></circle>
+              </g>
             </svg>
             <div className="gauge-center-text">
               <span className="gauge-value" id="gaugeValueDisplay">
@@ -423,36 +437,219 @@ const AnalysisResult = ({
         </div>
       </div>
 
-      {/* ACTIONABLE IMPROVE RESUME MODAL */}
-      {showImproveModal && (
+      {/* INLINE EMBEDDED RESUME OPTIMIZATION ROADMAP */}
+      <section
+        id="inline-improvement-roadmap"
+        className="card"
+        style={{
+          marginTop: '28px',
+          padding: '24px',
+          border: '1px solid var(--border-color)',
+          borderRadius: 'var(--radius-lg)',
+          background: 'var(--bg-card)',
+        }}
+      >
         <div
-          className="modal-backdrop"
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            flexWrap: 'wrap',
+            gap: '16px',
+            marginBottom: '20px',
+            borderBottom: '1px solid var(--border-color)',
+            paddingBottom: '16px',
+          }}
+        >
+          <div>
+            <span className="badge badge-primary">
+              <i className="bi bi-magic"></i> AI RESUME OPTIMIZER
+            </span>
+            <h3 style={{ margin: '6px 0 2px', fontSize: '1.25rem', fontWeight: 800 }}>
+              Resume Optimization & Improvement Roadmap
+            </h3>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+              Target Role: <strong>{analysis.targetJobRole || 'Software Professional'}</strong> • Candidate:{' '}
+              <strong>{candidateName || 'You'}</strong>
+            </p>
+          </div>
+          <Link
+            to={`/dashboard/resumeimprovement?id=${analysis.id || ''}`}
+            className="btn btn-primary"
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}
+          >
+            <i className="bi bi-box-arrow-up-right"></i> Open Full Detailed Improvement Plan
+          </Link>
+        </div>
+
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 340px), 1fr))', gap: '20px' }}>
+          {/* Summary Preview */}
+          <div
+            style={{
+              background: 'var(--bg-secondary)',
+              padding: '18px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-color)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '10px',
+              }}
+            >
+              <strong style={{ fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                <i className="bi bi-file-text text-accent" style={{ marginRight: '6px' }}></i>
+                Tailored Professional Summary
+              </strong>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => handleCopy('inline-summary', generatedSummary)}
+                style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+              >
+                <i className="bi bi-clipboard"></i> {copiedKey === 'inline-summary' ? 'Copied!' : 'Copy'}
+              </button>
+            </div>
+            <p style={{ fontSize: '0.84rem', lineHeight: '1.5', color: 'var(--text-secondary)', margin: 0, fontStyle: 'italic' }}>
+              "{generatedSummary}"
+            </p>
+          </div>
+
+          {/* Missing Keywords Preview */}
+          <div
+            style={{
+              background: 'var(--bg-secondary)',
+              padding: '18px',
+              borderRadius: 'var(--radius-md)',
+              border: '1px solid var(--border-color)',
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                marginBottom: '10px',
+              }}
+            >
+              <strong style={{ fontSize: '0.92rem', color: 'var(--text-primary)' }}>
+                <i className="bi bi-key-fill text-accent" style={{ marginRight: '6px' }}></i>
+                High-Priority Missing Keywords
+              </strong>
+              {missingSkills.length > 0 && (
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-sm"
+                  onClick={copyMissingKeywordsString}
+                  style={{ fontSize: '0.75rem', padding: '3px 8px' }}
+                >
+                  <i className="bi bi-clipboard"></i> {copiedKey === 'all-keywords' ? 'Copied All!' : 'Copy All'}
+                </button>
+              )}
+            </div>
+            {missingSkills.length > 0 ? (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                {missingSkills.map((sk, idx) => {
+                  const name = typeof sk === 'object' ? sk.skill || sk.name : sk;
+                  const priority = typeof sk === 'object' ? sk.priority || 'HIGH' : 'HIGH';
+                  return (
+                    <span
+                      key={idx}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        background: 'var(--bg-card)',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '16px',
+                        padding: '4px 10px',
+                        fontSize: '0.78rem',
+                      }}
+                    >
+                      <strong>{name}</strong>
+                      <span
+                        style={{
+                          fontSize: '0.65rem',
+                          color: priority === 'HIGH' ? '#dc2626' : '#d97706',
+                          fontWeight: 700,
+                        }}
+                      >
+                        {priority}
+                      </span>
+                    </span>
+                  );
+                })}
+              </div>
+            ) : (
+              <p style={{ margin: 0, fontSize: '0.84rem', color: 'var(--success)' }}>
+                <i className="bi bi-check-circle-fill" style={{ marginRight: '6px' }}></i>
+                All essential keyword requisitions detected in your resume!
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Actionable Recommendations Preview */}
+        <div
+          style={{
+            marginTop: '18px',
+            background: 'var(--bg-secondary)',
+            padding: '16px 18px',
+            borderRadius: 'var(--radius-md)',
+            border: '1px solid var(--border-color)',
+          }}
+        >
+          <strong style={{ fontSize: '0.92rem', color: 'var(--text-primary)', display: 'block', marginBottom: '8px' }}>
+            <i className="bi bi-check2-square text-accent" style={{ marginRight: '6px' }}></i>
+            Actionable Optimization Checklist
+          </strong>
+          <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '0.85rem', color: 'var(--text-secondary)' }}>
+            {recommendations.slice(0, 3).map((rec, i) => (
+              <li key={i} style={{ marginBottom: '6px' }}>{rec}</li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
+      {/* ACTIONABLE IMPROVE RESUME MODAL - PORTAL (Renders directly into document.body, free of parent transforms) */}
+      {showImproveModal && typeof document !== 'undefined' && createPortal(
+        <div
+          className="modal-portal-overlay"
           style={{
             position: 'fixed',
-            top: 0,
-            left: 0,
+            inset: 0,
             width: '100vw',
             height: '100vh',
-            background: 'rgba(15, 23, 42, 0.65)',
+            background: 'rgba(15, 23, 42, 0.75)',
+            backdropFilter: 'blur(5px)',
+            WebkitBackdropFilter: 'blur(5px)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            zIndex: 9999,
-            padding: '20px',
+            zIndex: 999999,
+            padding: '16px',
+            boxSizing: 'border-box',
+            overflowY: 'auto',
           }}
           onClick={() => setShowImproveModal(false)}
         >
           <div
-            className="card"
+            className="card modal-portal-dialog"
             style={{
-              maxWidth: '720px',
+              maxWidth: '820px',
               width: '100%',
-              maxHeight: '90vh',
-              overflowY: 'auto',
-              background: 'var(--bg-card)',
-              borderRadius: 'var(--radius-lg)',
-              boxShadow: '0 20px 25px -5px rgba(0, 0, 0, 0.25)',
-              padding: '24px',
+              maxHeight: '92vh',
+              display: 'flex',
+              flexDirection: 'column',
+              background: 'var(--bg-card, #ffffff)',
+              borderRadius: 'var(--radius-lg, 16px)',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.45)',
+              border: '1px solid var(--border-color, #e2e8f0)',
+              overflow: 'hidden',
+              margin: 'auto',
             }}
             onClick={(e) => e.stopPropagation()}
           >
@@ -463,32 +660,36 @@ const AnalysisResult = ({
                 justifyContent: 'space-between',
                 alignItems: 'center',
                 borderBottom: '1px solid var(--border-color)',
-                paddingBottom: '14px',
-                marginBottom: '20px',
+                padding: '18px 24px',
+                background: 'var(--bg-card)',
+                flexShrink: 0,
               }}
             >
               <div>
-                <span className="badge badge-primary">AI RESUME OPTIMIZER</span>
-                <h3 style={{ margin: '4px 0 0', fontSize: '1.2rem', fontWeight: 700 }}>
+                <span className="badge badge-primary">
+                  <i className="bi bi-stars"></i> AI RESUME OPTIMIZER
+                </span>
+                <h3 style={{ margin: '4px 0 0', fontSize: '1.22rem', fontWeight: 800 }}>
                   Tailored Optimization Roadmap
                 </h3>
                 <small style={{ color: 'var(--text-secondary)' }}>
-                  Target: <strong>{analysis.targetJobRole || 'Software Professional'}</strong> (Candidate:{' '}
-                  {candidateName || 'You'})
+                  Target: <strong>{analysis.targetJobRole || 'Software Professional'}</strong> • Candidate:{' '}
+                  <strong>{candidateName || 'You'}</strong>
                 </small>
               </div>
               <button
                 type="button"
                 className="btn btn-ghost btn-sm"
                 onClick={() => setShowImproveModal(false)}
-                style={{ fontSize: '1.2rem', color: 'var(--text-muted)' }}
+                style={{ fontSize: '1rem', color: 'var(--text-muted)', lineHeight: 1, padding: '6px 10px' }}
+                aria-label="Close"
               >
-                ✕
+                <i className="bi bi-x-lg"></i>
               </button>
             </div>
 
             {/* Modal Body */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            <div style={{ flex: 1, overflowY: 'auto', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
               {/* Item 1: Professional Summary */}
               <div
                 style={{
@@ -504,6 +705,8 @@ const AnalysisResult = ({
                     justifyContent: 'space-between',
                     alignItems: 'center',
                     marginBottom: '8px',
+                    flexWrap: 'wrap',
+                    gap: '8px',
                   }}
                 >
                   <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
@@ -523,7 +726,7 @@ const AnalysisResult = ({
                 <p
                   style={{
                     fontSize: '0.85rem',
-                    lineHeight: '1.5',
+                    lineHeight: '1.55',
                     color: 'var(--text-secondary)',
                     margin: 0,
                     fontStyle: 'italic',
@@ -548,7 +751,9 @@ const AnalysisResult = ({
                       display: 'flex',
                       justifyContent: 'space-between',
                       alignItems: 'center',
-                      marginBottom: '8px',
+                      marginBottom: '10px',
+                      flexWrap: 'wrap',
+                      gap: '8px',
                     }}
                   >
                     <strong style={{ fontSize: '0.9rem', color: 'var(--text-primary)' }}>
@@ -631,27 +836,32 @@ const AnalysisResult = ({
                 display: 'flex',
                 justifyContent: 'space-between',
                 alignItems: 'center',
-                marginTop: '24px',
-                paddingTop: '16px',
+                padding: '16px 24px',
                 borderTop: '1px solid var(--border-color)',
+                background: 'var(--bg-card)',
+                flexShrink: 0,
+                flexWrap: 'wrap',
+                gap: '12px',
               }}
             >
               <Link
                 to={`/dashboard/resumeimprovement?id=${analysis.id || ''}`}
-                className="btn btn-primary btn-sm"
+                className="btn btn-primary"
+                onClick={() => setShowImproveModal(false)}
               >
                 <i className="bi bi-box-arrow-up-right"></i> Open Full Detailed Improvement Plan
               </Link>
               <button
                 type="button"
-                className="btn btn-secondary btn-sm"
+                className="btn btn-secondary"
                 onClick={() => setShowImproveModal(false)}
               >
                 Close
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

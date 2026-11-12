@@ -69,8 +69,16 @@ public class OllamaAIProvider implements AIProvider {
             requestBody.put("format", "json");
             requestBody.put("stream", false);
 
+            // Optimization options for local inference: prevent endless rambling and speed up generation
+            Map<String, Object> options = new HashMap<>();
+            options.put("temperature", 0.1);
+            options.put("top_p", 0.85);
+            options.put("num_predict", 2048);
+            options.put("num_ctx", 8192);
+            requestBody.put("options", options);
+
             String jsonPayload = objectMapper.writeValueAsString(requestBody);
-            int timeoutSec = Math.max(120, config.getOllama().getTimeoutSeconds());
+            int timeoutSec = Math.max(240, config.getOllama().getTimeoutSeconds());
 
             log.info("Sending resume analysis request to Ollama (model: {}, timeout: {}s)", effectiveModel, timeoutSec);
 
@@ -106,6 +114,15 @@ public class OllamaAIProvider implements AIProvider {
     private String cleanMarkdownCodeBlocks(String text) {
         if (text == null) return "";
         String trimmed = text.trim();
+
+        // Strip thinking model tokens (e.g. Qwen 3 <think>...</think>)
+        if (trimmed.contains("<think>")) {
+            int thinkEnd = trimmed.lastIndexOf("</think>");
+            if (thinkEnd != -1) {
+                trimmed = trimmed.substring(thinkEnd + 8).trim();
+            }
+        }
+
         if (trimmed.startsWith("```json")) {
             trimmed = trimmed.substring(7);
         } else if (trimmed.startsWith("```")) {
@@ -114,7 +131,16 @@ public class OllamaAIProvider implements AIProvider {
         if (trimmed.endsWith("```")) {
             trimmed = trimmed.substring(0, trimmed.length() - 3);
         }
-        return trimmed.trim();
+        trimmed = trimmed.trim();
+
+        // Extract clean JSON payload bounded by outermost curly braces
+        int firstBrace = trimmed.indexOf('{');
+        int lastBrace = trimmed.lastIndexOf('}');
+        if (firstBrace != -1 && lastBrace > firstBrace) {
+            trimmed = trimmed.substring(firstBrace, lastBrace + 1).trim();
+        }
+
+        return trimmed;
     }
 
     @Override

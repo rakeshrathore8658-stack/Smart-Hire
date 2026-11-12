@@ -774,7 +774,13 @@ public class PageController {
         setupCommonModel(model, session, "USER");
         model.addAttribute("pageTitle", "Analyzer History");
 
-        List<ResumeAnalysis> analyses = resumeAnalysisRepository.findAllByOrderByCreatedAtDesc();
+        String activeEmail = (String) model.getAttribute("userEmail");
+        User currentUser = (activeEmail != null && !activeEmail.isBlank())
+                ? userRepository.findByEmail(activeEmail.trim().toLowerCase()).orElse(null)
+                : null;
+        List<ResumeAnalysis> analyses = (currentUser != null)
+                ? resumeAnalysisRepository.findAllForUser(currentUser.getId(), currentUser.getEmail())
+                : Collections.emptyList();
         model.addAttribute("analysesList", analyses);
 
         int totalScanned = analyses.size();
