@@ -15,16 +15,11 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final com.smarthire.repository.ResumeRepository resumeRepository;
 
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, @org.springframework.beans.factory.annotation.Autowired(required = false) com.smarthire.repository.ResumeRepository resumeRepository) {
+    @org.springframework.beans.factory.annotation.Autowired
+    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
-        this.resumeRepository = resumeRepository;
-    }
-
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
-        this(userRepository, passwordEncoder, null);
     }
 
     /**
@@ -129,30 +124,12 @@ public class AuthService {
             if ("RECRUITER".equals(targetRole)) targetRole = "HR";
 
             if (!existingRole.equalsIgnoreCase(targetRole)) {
-                // If user is registered as USER, but clicked Google Login on HR portal:
-                // Check if they have ANY uploaded resumes or candidate data.
-                boolean hasCandidateActivity = false;
-                if (resumeRepository != null && user.getId() != null) {
-                    try {
-                        hasCandidateActivity = !resumeRepository.findByUserIdOrderByCreatedAtDesc(user.getId()).isEmpty();
-                    } catch (Exception ignored) {}
-                }
-
-                if (!hasCandidateActivity && "HR".equalsIgnoreCase(targetRole) && "USER".equalsIgnoreCase(existingRole)) {
-                    // Safe to upgrade account to HR since there is no candidate activity!
-                    user.setRole("HR");
-                    user.setCareerRole("HR / Recruiter");
-                    if (googleId != null && !googleId.isBlank()) user.setGoogleId(googleId.trim());
-                    if (avatarUrl != null && !avatarUrl.isBlank()) user.setAvatarUrl(avatarUrl.trim());
-                    if (fullName != null && !fullName.isBlank()) user.setFullName(fullName.trim());
-                    return userRepository.save(user);
-                }
-
                 String existingLabel = "HR".equalsIgnoreCase(existingRole) ? "HR / Recruiter" : "Job Seeker";
                 String targetLabel = "HR".equalsIgnoreCase(targetRole) ? "HR / Recruiter" : "Job Seeker";
-                throw new IllegalStateException("Role conflict: This Google account (" + normalizedEmail + ") is registered as a "
-                        + existingLabel + ". An email can only access one dashboard. Please sign in via the "
-                        + existingLabel + " portal.");
+                throw new IllegalStateException("Ye email address (" + normalizedEmail + ") already "
+                        + existingLabel + " portal ke liye registered hai. Ek email ke corresponding sirf or sirf ek dashboard ("
+                        + existingLabel + ") me sign in kar sakte hain. Please "
+                        + existingLabel + " portal se sign in karein.");
             }
 
             boolean needsSave = false;

@@ -25,7 +25,12 @@ const Login = () => {
   useEffect(() => {
     const oauthError = searchParams.get('oauth_error') || searchParams.get('error');
     if (oauthError) {
-      setErrorMessage(decodeURIComponent(oauthError));
+      if (oauthError === 'portal_mismatch') {
+        const portal = isHr ? 'Job Seeker' : 'HR / Recruiter';
+        setErrorMessage(`Role Conflict: Ye account ${portal} portal ke liye registered hai. Ek email address ke corresponding sirf or sirf ek hi dashboard (${portal}) me sign in kar sakte hain. Please ${portal} portal select karke sign in karein.`);
+      } else {
+        setErrorMessage(decodeURIComponent(oauthError));
+      }
     }
 
     const oauthSuccess = searchParams.get('oauth_success') === 'true' || searchParams.get('oauth') === 'success';

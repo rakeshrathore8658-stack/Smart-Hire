@@ -40,6 +40,7 @@ public class SecurityConfig {
     private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
     private final org.springframework.security.oauth2.client.registration.ClientRegistrationRepository clientRegistrationRepository;
 
+    @org.springframework.beans.factory.annotation.Autowired
     public SecurityConfig(
             CustomUserDetailsService userDetailsService,
             PasswordEncoder passwordEncoder,
