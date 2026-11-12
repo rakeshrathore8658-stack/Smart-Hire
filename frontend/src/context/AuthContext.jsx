@@ -9,7 +9,7 @@ export const AuthProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const { setTheme } = useTheme();
 
-  const saveUserSession = (u) => {
+  const saveUserSession = (u, token) => {
     if (u && u.email) {
       const email = u.email.trim().toLowerCase();
       try {
@@ -17,6 +17,12 @@ export const AuthProvider = ({ children }) => {
         sessionStorage.setItem('smarthire_user', JSON.stringify(u));
         localStorage.setItem('smarthire_user_email', email);
         localStorage.setItem('smarthire_user', JSON.stringify(u));
+        if (token && typeof token === 'string' && token.trim()) {
+          sessionStorage.setItem('token', token.trim());
+          sessionStorage.setItem('smarthire_token', token.trim());
+          localStorage.setItem('token', token.trim());
+          localStorage.setItem('smarthire_token', token.trim());
+        }
       } catch (_) {}
     }
   };
@@ -25,8 +31,12 @@ export const AuthProvider = ({ children }) => {
     try {
       sessionStorage.removeItem('smarthire_user_email');
       sessionStorage.removeItem('smarthire_user');
+      sessionStorage.removeItem('token');
+      sessionStorage.removeItem('smarthire_token');
       localStorage.removeItem('smarthire_user_email');
       localStorage.removeItem('smarthire_user');
+      localStorage.removeItem('token');
+      localStorage.removeItem('smarthire_token');
     } catch (_) {}
   };
 
@@ -88,7 +98,17 @@ export const AuthProvider = ({ children }) => {
         const emailParam = params.get('email');
         const roleParam = params.get('role');
         const nameParam = params.get('name');
+        const tokenParam = params.get('token') || params.get('access_token');
         const oauthSuccess = params.get('oauth') === 'success' || params.get('oauth_success') === 'true';
+
+        if (tokenParam && tokenParam.trim()) {
+          try {
+            sessionStorage.setItem('token', tokenParam.trim());
+            sessionStorage.setItem('smarthire_token', tokenParam.trim());
+            localStorage.setItem('token', tokenParam.trim());
+            localStorage.setItem('smarthire_token', tokenParam.trim());
+          } catch (_) {}
+        }
 
         if (oauthSuccess && emailParam) {
           const u = {
@@ -97,7 +117,7 @@ export const AuthProvider = ({ children }) => {
             fullName: nameParam ? decodeURIComponent(nameParam) : emailParam.split('@')[0],
           };
           setUser(u);
-          saveUserSession(u);
+          saveUserSession(u, tokenParam);
           window.history.replaceState({}, document.title, window.location.pathname);
         }
       } catch (_) {}
@@ -109,8 +129,9 @@ export const AuthProvider = ({ children }) => {
     const response = await api.post('/auth/login', { email, password, role });
     if (response.data && response.data.success && response.data.user) {
       const u = response.data.user;
+      const token = response.data.token;
       setUser(u);
-      saveUserSession(u);
+      saveUserSession(u, token);
       if (u.themePreference) {
         setTheme(u.themePreference, false);
       }
@@ -123,8 +144,9 @@ export const AuthProvider = ({ children }) => {
     const response = await api.post('/auth/register', registerData);
     if (response.data && response.data.success && response.data.user) {
       const u = response.data.user;
+      const token = response.data.token;
       setUser(u);
-      saveUserSession(u);
+      saveUserSession(u, token);
       if (u.themePreference) {
         setTheme(u.themePreference, false);
       }
@@ -137,8 +159,9 @@ export const AuthProvider = ({ children }) => {
     const response = await api.post('/auth/google', googleData);
     if (response.data && response.data.success && response.data.user) {
       const u = response.data.user;
+      const token = response.data.token;
       setUser(u);
-      saveUserSession(u);
+      saveUserSession(u, token);
       if (u.themePreference) {
         setTheme(u.themePreference, false);
       }

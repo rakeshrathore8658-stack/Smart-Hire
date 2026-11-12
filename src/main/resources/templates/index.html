@@ -3,7 +3,6 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="refresh" content="0; url=http://localhost:5173/">
     <title>SmartHire - AI Resume Analyzer</title>
     <style>
         body {
@@ -39,14 +38,21 @@
         a.btn:hover { background: #e85924; }
     </style>
     <script>
-        window.location.replace("http://localhost:5173/");
+        var isProd = window.location.hostname.includes("onrender.com") || (!window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1"));
+        var base = isProd ? "https://resume-analyzer-sigma-nine.vercel.app" : "http://localhost:5173";
+        window.location.replace(base + "/" + window.location.search);
     </script>
 </head>
 <body>
     <div class="card">
         <h1>SmartHire Backend Online</h1>
-        <p>Spring Boot backend is connected to Neon PostgreSQL and running on port 8080.<br>Redirecting you to the SmartHire Web Application...</p>
-        <a class="btn" href="http://localhost:5173/">Open SmartHire Web App &rarr;</a>
+        <p>Spring Boot backend is connected to Neon PostgreSQL.<br>Redirecting you to the SmartHire Web Application...</p>
+        <a id="appBtn" class="btn" href="http://localhost:5173/">Open SmartHire Web App &rarr;</a>
     </div>
+    <script>
+        var isProd = window.location.hostname.includes("onrender.com") || (!window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1"));
+        var base = isProd ? "https://resume-analyzer-sigma-nine.vercel.app" : "http://localhost:5173";
+        document.getElementById("appBtn").href = base + "/" + window.location.search;
+    </script>
 </body>
 </html>

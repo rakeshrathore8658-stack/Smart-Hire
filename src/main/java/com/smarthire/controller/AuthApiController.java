@@ -34,6 +34,7 @@ public class AuthApiController {
 
     private final AuthService authService;
     private final UserRepository userRepository;
+    private final com.smarthire.security.jwt.JwtUtil jwtUtil;
     private final SecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
 
     private Map<String, Object> mapUser(User user) {
@@ -147,9 +148,12 @@ public class AuthApiController {
 
         establishSession(request, response, session, user, userDbRole);
 
+        String token = jwtUtil.generateToken(user);
+
         return ResponseEntity.ok(Map.of(
                 "success", true,
                 "message", "Login successful",
+                "token", token,
                 "user", mapUser(user)
         ));
     }
@@ -166,9 +170,12 @@ public class AuthApiController {
             String role = registered.getRole() != null ? registered.getRole().toUpperCase() : "USER";
             establishSession(request, response, session, registered, role);
 
+            String token = jwtUtil.generateToken(registered);
+
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                     "success", true,
                     "message", "Account registered successfully",
+                    "token", token,
                     "user", mapUser(registered)
             ));
         } catch (IllegalArgumentException e) {
@@ -194,6 +201,16 @@ public class AuthApiController {
         if (headerEmail != null && !headerEmail.isBlank()) {
             email = headerEmail.trim().toLowerCase();
         }
+
+        // Check JWT Authorization Bearer token header
+        String authHeader = (request != null) ? request.getHeader("Authorization") : null;
+        if (email == null && authHeader != null && authHeader.startsWith("Bearer ")) {
+            String extracted = jwtUtil.extractEmail(authHeader);
+            if (extracted != null && jwtUtil.validateToken(authHeader.substring(7).trim())) {
+                email = extracted;
+            }
+        }
+
         if (email == null) {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
             if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
@@ -230,6 +247,7 @@ public class AuthApiController {
         User user = userOpt.get();
         return ResponseEntity.ok(Map.of(
                 "authenticated", true,
+                "token", jwtUtil.generateToken(user),
                 "user", mapUser(user)
         ));
     }
@@ -295,9 +313,12 @@ public class AuthApiController {
             String activeRole = user.getRole() != null ? user.getRole().toUpperCase() : "USER";
             establishSession(request, response, session, user, activeRole);
 
+            String token = jwtUtil.generateToken(user);
+
             return ResponseEntity.ok(Map.of(
                     "success", true,
                     "message", "Google authentication successful",
+                    "token", token,
                     "user", mapUser(user)
             ));
         } catch (IllegalStateException | IllegalArgumentException ex) {

@@ -2,11 +2,19 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta http-equiv="refresh" content="0; url=http://localhost:5173/register">
     <title>SmartHire - Redirecting to Register...</title>
-    <script>window.location.replace("http://localhost:5173/register");</script>
+    <script>
+        var isProd = window.location.hostname.includes("onrender.com") || (!window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1"));
+        var base = isProd ? "https://resume-analyzer-sigma-nine.vercel.app" : "http://localhost:5173";
+        window.location.replace(base + "/register" + window.location.search);
+    </script>
 </head>
 <body>
-    <p>Redirecting to <a href="http://localhost:5173/register">SmartHire Register</a>...</p>
+    <p>Redirecting to <a id="redirectLink" href="http://localhost:5173/register">SmartHire Register</a>...</p>
+    <script>
+        var isProd = window.location.hostname.includes("onrender.com") || (!window.location.hostname.includes("localhost") && !window.location.hostname.includes("127.0.0.1"));
+        var base = isProd ? "https://resume-analyzer-sigma-nine.vercel.app" : "http://localhost:5173";
+        document.getElementById("redirectLink").href = base + "/register" + window.location.search;
+    </script>
 </body>
 </html>

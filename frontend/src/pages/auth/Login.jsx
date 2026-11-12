@@ -28,11 +28,21 @@ const Login = () => {
       setErrorMessage(decodeURIComponent(oauthError));
     }
 
-    const oauthSuccess = searchParams.get('oauth_success') === 'true';
+    const oauthSuccess = searchParams.get('oauth_success') === 'true' || searchParams.get('oauth') === 'success';
     if (oauthSuccess) {
       const emailParam = searchParams.get('email');
       const roleParam = searchParams.get('role');
       const nameParam = searchParams.get('name');
+      const tokenParam = searchParams.get('token') || searchParams.get('access_token');
+
+      if (tokenParam && tokenParam.trim()) {
+        try {
+          sessionStorage.setItem('token', tokenParam.trim());
+          sessionStorage.setItem('smarthire_token', tokenParam.trim());
+          localStorage.setItem('token', tokenParam.trim());
+          localStorage.setItem('smarthire_token', tokenParam.trim());
+        } catch (_) {}
+      }
 
       if (emailParam) {
         const u = {
@@ -101,10 +111,13 @@ const Login = () => {
     setGoogleLoading(true);
     setErrorMessage('');
     const targetRole = isHr ? 'HR' : 'USER';
+    const currentOrigin = typeof window !== 'undefined' ? window.location.origin : 'http://localhost:5173';
 
     try {
-      document.cookie = `smarthire_oauth_role=${targetRole}; path=/; max-age=300; SameSite=Lax`;
+      document.cookie = `smarthire_oauth_role=${targetRole}; path=/; max-age=600; SameSite=Lax`;
+      document.cookie = `smarthire_oauth_origin=${encodeURIComponent(currentOrigin)}; path=/; max-age=600; SameSite=Lax`;
       sessionStorage.setItem('smarthire_oauth_role', targetRole);
+      sessionStorage.setItem('smarthire_oauth_origin', currentOrigin);
     } catch (_) {}
 
     // In production (Vercel), VITE_API_BASE_URL points to Render backend
@@ -116,8 +129,8 @@ const Login = () => {
       backendUrl = clean.endsWith('/api') ? clean.slice(0, -4) : clean;
     }
 
-    // Redirect to Spring Security standard OAuth2 authorization endpoint
-    window.location.href = `${backendUrl}/oauth2/authorization/google?role=${targetRole}`;
+    // Redirect to Spring Security standard OAuth2 authorization endpoint with origin & role
+    window.location.href = `${backendUrl}/oauth2/authorization/google?role=${targetRole}&origin=${encodeURIComponent(currentOrigin)}`;
   };
 
   return (
