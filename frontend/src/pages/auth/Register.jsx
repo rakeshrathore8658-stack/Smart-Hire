@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/client';
-import GoogleAuthModal from '../../components/auth/GoogleAuthModal';
-import GoogleOneTap from '../../components/auth/GoogleOneTap';
 
 const Register = () => {
   const [searchParams] = useSearchParams();
@@ -22,10 +20,9 @@ const Register = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [googleModalOpen, setGoogleModalOpen] = useState(false);
   const [dbJobs, setDbJobs] = useState([]);
 
-  const { register, loginWithGoogle } = useAuth();
+  const { register } = useAuth();
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -112,23 +109,25 @@ const Register = () => {
     }
   };
 
-  const handleGoogleSuccess = async (googlePayload) => {
+  // Real Google OAuth 2.0 Authorization Flow Redirect
+  const handleGoogleSignup = () => {
     setGoogleLoading(true);
     setErrorMessage('');
+    const targetRole = isHr ? 'HR' : 'USER';
+
     try {
-      const data = await loginWithGoogle(googlePayload);
-      if (data.user?.role === 'HR' || data.user?.role === 'RECRUITER') {
-        navigate('/dashboard/hr');
-      } else {
-        navigate('/dashboard');
-      }
-    } catch (err) {
-      setErrorMessage(
-        err.response?.data?.message || err.message || 'Google registration failed. Please try again.'
-      );
-    } finally {
-      setGoogleLoading(false);
+      document.cookie = `smarthire_oauth_role=${targetRole}; path=/; max-age=300; SameSite=Lax`;
+      sessionStorage.setItem('smarthire_oauth_role', targetRole);
+    } catch (_) {}
+
+    const rawApi = import.meta.env.VITE_API_BASE_URL;
+    let backendUrl = 'http://localhost:8080';
+    if (rawApi && rawApi.trim()) {
+      const clean = rawApi.trim().replace(/\/+$/, '');
+      backendUrl = clean.endsWith('/api') ? clean.slice(0, -4) : clean;
     }
+
+    window.location.href = `${backendUrl}/oauth2/authorization/google?role=${targetRole}`;
   };
 
   return (
@@ -553,12 +552,14 @@ const Register = () => {
             </div>
 
             {/* Sign up with Google Button */}
+            {/* Real Google OAuth 2.0 Authorization Button */}
             <button
               type="button"
               className="btn-google-auth"
               id="btnGoogleRegister"
-              onClick={() => setGoogleModalOpen(true)}
+              onClick={handleGoogleSignup}
               disabled={loading || googleLoading}
+              title={`Continue with Google as ${isHr ? 'HR / Recruiter' : 'Job Seeker'}`}
             >
               <svg className="google-icon" viewBox="0 0 24 24" width="20" height="20">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -567,9 +568,7 @@ const Register = () => {
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
               </svg>
               <span>
-                {googleLoading
-                  ? 'Connecting with Google...'
-                  : `Sign up with Google (${isHr ? 'HR Recruiter' : 'Job Seeker'})`}
+                {googleLoading ? 'Redirecting to Google...' : 'Continue with Google'}
               </span>
             </button>
 
@@ -592,22 +591,6 @@ const Register = () => {
           </form>
         </div>
       </section>
-
-      {/* Google Authentication Dialog Modal */}
-      <GoogleAuthModal
-        isOpen={googleModalOpen}
-        onClose={() => setGoogleModalOpen(false)}
-        selectedRole={role}
-        onSuccess={handleGoogleSuccess}
-      />
-
-      {/* Google One Tap Prompt */}
-      <GoogleOneTap
-        selectedRole={role}
-        onSuccess={handleGoogleSuccess}
-        autoShow={true}
-        delayMs={600}
-      />
     </main>
   );
 };

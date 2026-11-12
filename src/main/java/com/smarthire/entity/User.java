@@ -35,6 +35,12 @@ public class User {
     @Column(name = "role", nullable = false, length = 20)
     private String role = "USER";
 
+    @Column(name = "google_id", length = 100)
+    private String googleId;
+
+    @Column(name = "avatar_url", length = 500)
+    private String avatarUrl;
+
     @Column(name = "career_role", length = 50)
     private String careerRole;
 
@@ -262,5 +268,21 @@ public class User {
 
     public void setTourLastStep(Integer tourLastStep) {
         this.tourLastStep = (tourLastStep != null) ? tourLastStep : 0;
+    }
+
+    public String getGoogleId() {
+        return googleId;
+    }
+
+    public void setGoogleId(String googleId) {
+        this.googleId = googleId;
+    }
+
+    public String getAvatarUrl() {
+        return avatarUrl;
+    }
+
+    public void setAvatarUrl(String avatarUrl) {
+        this.avatarUrl = avatarUrl;
     }
 }

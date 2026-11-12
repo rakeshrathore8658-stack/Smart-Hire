@@ -48,17 +48,60 @@ export const AuthProvider = ({ children }) => {
           setTheme(u.themePreference, false);
         }
       } else {
-        setUser(null);
-        clearUserSession();
+        const stored = typeof window !== 'undefined'
+          ? (sessionStorage.getItem('smarthire_user') || localStorage.getItem('smarthire_user'))
+          : null;
+        if (stored) {
+          try {
+            setUser(JSON.parse(stored));
+          } catch (_) {
+            setUser(null);
+            clearUserSession();
+          }
+        } else {
+          setUser(null);
+          clearUserSession();
+        }
       }
     } catch (err) {
-      setUser(null);
+      const stored = typeof window !== 'undefined'
+        ? (sessionStorage.getItem('smarthire_user') || localStorage.getItem('smarthire_user'))
+        : null;
+      if (stored) {
+        try {
+          setUser(JSON.parse(stored));
+        } catch (_) {
+          setUser(null);
+        }
+      } else {
+        setUser(null);
+      }
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const emailParam = params.get('email');
+        const roleParam = params.get('role');
+        const nameParam = params.get('name');
+        const oauthSuccess = params.get('oauth') === 'success' || params.get('oauth_success') === 'true';
+
+        if (oauthSuccess && emailParam) {
+          const u = {
+            email: emailParam.trim().toLowerCase(),
+            role: (roleParam || 'USER').toUpperCase(),
+            fullName: nameParam ? decodeURIComponent(nameParam) : emailParam.split('@')[0],
+          };
+          setUser(u);
+          saveUserSession(u);
+          window.history.replaceState({}, document.title, window.location.pathname);
+        }
+      } catch (_) {}
+    }
     fetchCurrentUser();
   }, []);
 
@@ -137,6 +180,7 @@ export const AuthProvider = ({ children }) => {
         loginWithGoogle,
         logout,
         updateUser,
+        fetchCurrentUser,
         refreshUser: fetchCurrentUser,
       }}
     >

@@ -29,7 +29,11 @@ public class AuthService {
         String email = request.getEmail().trim().toLowerCase();
 
         if (userRepository.existsByEmail(email)) {
-            throw new IllegalArgumentException("An account with this email already exists: " + email);
+            User existing = userRepository.findByEmail(email).orElse(null);
+            String existingRole = (existing != null && existing.getRole() != null) ? existing.getRole().toUpperCase() : "USER";
+            if ("RECRUITER".equals(existingRole)) existingRole = "HR";
+            String label = "HR".equalsIgnoreCase(existingRole) ? "HR / Recruiter" : "Job Seeker";
+            throw new IllegalArgumentException("This email address is already registered as a " + label + ". Ek email se ek hi dashboard access ho sakta hai.");
         }
 
         if (request.getPassword() == null || !request.getPassword().equals(request.getConfirmPassword())) {
@@ -85,6 +89,10 @@ public class AuthService {
 
     /**
      * Authenticates or automatically creates an account for Google Sign-In.
+     * Follows strict account-matching rules:
+     * 1. Matches by Google Subject ID (sub).
+     * 2. Matches by verified email address.
+     * 3. Preserves existing user roles and links Google profile.
      */
     @Transactional
     public User loginOrRegisterWithGoogle(String email, String fullName, String requestedRole, String googleId, String avatarUrl) {
@@ -92,19 +100,57 @@ public class AuthService {
             throw new IllegalArgumentException("Google account email cannot be empty.");
         }
         String normalizedEmail = email.trim().toLowerCase();
-        Optional<User> existingOpt = userRepository.findByEmail(normalizedEmail);
 
-        if (existingOpt.isPresent()) {
-            User user = existingOpt.get();
+        // 1. First check by Google Subject ID (sub)
+        Optional<User> userOpt = Optional.empty();
+        if (googleId != null && !googleId.isBlank()) {
+            userOpt = userRepository.findByGoogleId(googleId.trim());
+        }
+
+        // 2. If not found by googleId, check by verified email
+        if (userOpt.isEmpty()) {
+            userOpt = userRepository.findByEmail(normalizedEmail);
+        }
+
+        if (userOpt.isPresent()) {
+            User user = userOpt.get();
+            String existingRole = user.getRole() != null ? user.getRole().trim().toUpperCase() : "USER";
+            if ("RECRUITER".equals(existingRole)) existingRole = "HR";
+
+            String targetRole = (requestedRole != null && !requestedRole.isBlank())
+                    ? requestedRole.trim().toUpperCase()
+                    : existingRole;
+            if ("RECRUITER".equals(targetRole)) targetRole = "HR";
+
+            if (!existingRole.equalsIgnoreCase(targetRole)) {
+                String existingLabel = "HR".equalsIgnoreCase(existingRole) ? "HR / Recruiter" : "Job Seeker";
+                String targetLabel = "HR".equalsIgnoreCase(targetRole) ? "HR / Recruiter" : "Job Seeker";
+                throw new IllegalStateException("Role conflict: This Google account (" + normalizedEmail + ") is registered as a "
+                        + existingLabel + ". An email can only access one dashboard. Please sign in via the "
+                        + existingLabel + " portal.");
+            }
+
+            boolean needsSave = false;
+            if (user.getGoogleId() == null && googleId != null && !googleId.isBlank()) {
+                user.setGoogleId(googleId.trim());
+                needsSave = true;
+            }
+            if (user.getAvatarUrl() == null && avatarUrl != null && !avatarUrl.isBlank()) {
+                user.setAvatarUrl(avatarUrl.trim());
+                needsSave = true;
+            }
             if ((user.getFullName() == null || user.getFullName().isBlank() || "User Account".equalsIgnoreCase(user.getFullName()))
                     && fullName != null && !fullName.isBlank()) {
                 user.setFullName(fullName.trim());
+                needsSave = true;
+            }
+            if (needsSave) {
                 userRepository.save(user);
             }
             return user;
         }
 
-        // New user: auto-register with requested role
+        // 3. New user: auto-register with requested role (default USER)
         String assignedRole = (requestedRole != null && !requestedRole.isBlank())
                 ? requestedRole.trim().toUpperCase()
                 : "USER";
@@ -115,6 +161,8 @@ public class AuthService {
         User newUser = new User();
         newUser.setFullName((fullName != null && !fullName.isBlank()) ? fullName.trim() : "Google User");
         newUser.setEmail(normalizedEmail);
+        newUser.setGoogleId(googleId != null && !googleId.isBlank() ? googleId.trim() : null);
+        newUser.setAvatarUrl(avatarUrl != null && !avatarUrl.isBlank() ? avatarUrl.trim() : null);
         newUser.setPasswordHash(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
         newUser.setRole(assignedRole);
         newUser.setCareerRole("HR".equalsIgnoreCase(assignedRole) ? "HR / Recruiter" : "Job Seeker");

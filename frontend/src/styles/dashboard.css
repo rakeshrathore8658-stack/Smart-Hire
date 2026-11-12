@@ -3365,26 +3365,14 @@ html[data-theme="dark"] .sidebar-link.active {
     flex-shrink: 0;
 }
 
-/* Google One Tap Animations & Responsive Styles */
-@keyframes googleOneTapSlideIn {
-    0% {
-        opacity: 0;
-        transform: translateY(-16px) scale(0.96);
-    }
-    100% {
-        opacity: 1;
-        transform: translateY(0) scale(1);
+/* Google OAuth Dialog Responsive Styles */
+@media (max-width: 680px) {
+    .google-oauth-grid {
+        grid-template-columns: 1fr !important;
+        gap: 20px !important;
+        padding: 24px 20px 20px !important;
     }
 }
 
-@media (max-width: 576px) {
-    .google-one-tap-card {
-        top: 12px !important;
-        right: 12px !important;
-        left: 12px !important;
-        width: auto !important;
-        max-width: none !important;
-    }
-}
 
 

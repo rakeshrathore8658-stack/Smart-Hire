@@ -1,8 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
-import GoogleAuthModal from '../../components/auth/GoogleAuthModal';
-import GoogleOneTap from '../../components/auth/GoogleOneTap';
 
 const Login = () => {
   const [searchParams] = useSearchParams();
@@ -14,15 +12,57 @@ const Login = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
-  const [googleModalOpen, setGoogleModalOpen] = useState(false);
 
-  const { login, loginWithGoogle } = useAuth();
+  const { login, fetchCurrentUser } = useAuth();
   const navigate = useNavigate();
 
   const isLogout = searchParams.get('logout') === 'true';
   const isReset = searchParams.get('reset') === 'true';
 
   const isHr = selectedRole === 'HR';
+
+  // Listen for Google OAuth callback results from Spring Boot backend
+  useEffect(() => {
+    const oauthError = searchParams.get('oauth_error') || searchParams.get('error');
+    if (oauthError) {
+      setErrorMessage(decodeURIComponent(oauthError));
+    }
+
+    const oauthSuccess = searchParams.get('oauth_success') === 'true';
+    if (oauthSuccess) {
+      const emailParam = searchParams.get('email');
+      const roleParam = searchParams.get('role');
+      const nameParam = searchParams.get('name');
+
+      if (emailParam) {
+        const u = {
+          email: emailParam,
+          fullName: nameParam || emailParam.split('@')[0],
+          role: roleParam || 'USER',
+        };
+        try {
+          sessionStorage.setItem('smarthire_user_email', emailParam.toLowerCase());
+          sessionStorage.setItem('smarthire_user', JSON.stringify(u));
+          localStorage.setItem('smarthire_user_email', emailParam.toLowerCase());
+          localStorage.setItem('smarthire_user', JSON.stringify(u));
+        } catch (_) {}
+      }
+
+      fetchCurrentUser().then(() => {
+        if (roleParam === 'HR' || roleParam === 'RECRUITER') {
+          navigate('/dashboard/hr', { replace: true });
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
+      }).catch(() => {
+        if (roleParam === 'HR' || roleParam === 'RECRUITER') {
+          navigate('/dashboard/hr', { replace: true });
+        } else {
+          navigate('/dashboard', { replace: true });
+        }
+      });
+    }
+  }, [searchParams]);
 
   const handleRoleSelect = (role) => {
     setSelectedRole(role);
@@ -56,23 +96,28 @@ const Login = () => {
     }
   };
 
-  const handleGoogleSuccess = async (googlePayload) => {
+  // Real Google OAuth 2.0 Authorization Flow Redirect
+  const handleGoogleLogin = () => {
     setGoogleLoading(true);
     setErrorMessage('');
+    const targetRole = isHr ? 'HR' : 'USER';
+
     try {
-      const data = await loginWithGoogle(googlePayload);
-      if (data.user?.role === 'HR' || data.user?.role === 'RECRUITER') {
-        navigate('/dashboard/hr');
-      } else {
-        navigate('/dashboard');
-      }
-    } catch (err) {
-      setErrorMessage(
-        err.response?.data?.message || err.message || 'Google authentication failed. Please try again.'
-      );
-    } finally {
-      setGoogleLoading(false);
+      document.cookie = `smarthire_oauth_role=${targetRole}; path=/; max-age=300; SameSite=Lax`;
+      sessionStorage.setItem('smarthire_oauth_role', targetRole);
+    } catch (_) {}
+
+    // In production (Vercel), VITE_API_BASE_URL points to Render backend
+    // In local development, defaults to 'http://localhost:8080'
+    const rawApi = import.meta.env.VITE_API_BASE_URL;
+    let backendUrl = 'http://localhost:8080';
+    if (rawApi && rawApi.trim()) {
+      const clean = rawApi.trim().replace(/\/+$/, '');
+      backendUrl = clean.endsWith('/api') ? clean.slice(0, -4) : clean;
     }
+
+    // Redirect to Spring Security standard OAuth2 authorization endpoint
+    window.location.href = `${backendUrl}/oauth2/authorization/google?role=${targetRole}`;
   };
 
   return (
@@ -391,13 +436,14 @@ const Login = () => {
               <span>OR</span>
             </div>
 
-            {/* Sign in with Google Button */}
+            {/* Real Google OAuth 2.0 Authorization Button */}
             <button
               type="button"
               className="btn-google-auth"
               id="btnGoogleLogin"
-              onClick={() => setGoogleModalOpen(true)}
+              onClick={handleGoogleLogin}
               disabled={loading || googleLoading}
+              title={`Continue with Google as ${isHr ? 'HR / Recruiter' : 'Job Seeker'}`}
             >
               <svg className="google-icon" viewBox="0 0 24 24" width="20" height="20">
                 <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
@@ -406,9 +452,7 @@ const Login = () => {
                 <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z" />
               </svg>
               <span>
-                {googleLoading
-                  ? 'Signing in with Google...'
-                  : `Sign in with Google (${isHr ? 'HR Recruiter' : 'Job Seeker'})`}
+                {googleLoading ? 'Redirecting to Google...' : 'Continue with Google'}
               </span>
             </button>
 
@@ -431,22 +475,6 @@ const Login = () => {
           </form>
         </div>
       </section>
-
-      {/* Google Authentication Dialog Modal */}
-      <GoogleAuthModal
-        isOpen={googleModalOpen}
-        onClose={() => setGoogleModalOpen(false)}
-        selectedRole={selectedRole}
-        onSuccess={handleGoogleSuccess}
-      />
-
-      {/* Google One Tap Prompt (Matches Google Identity Services One-Tap UI) */}
-      <GoogleOneTap
-        selectedRole={selectedRole}
-        onSuccess={handleGoogleSuccess}
-        autoShow={true}
-        delayMs={500}
-      />
     </main>
   );
 };

@@ -187,6 +187,7 @@ public class AuthApiController {
 
     @GetMapping("/me")
     public ResponseEntity<?> getCurrentUser(
+            HttpServletRequest request,
             HttpSession session,
             @RequestHeader(value = "X-User-Email", required = false) String headerEmail) {
         String email = null;
@@ -199,6 +200,15 @@ public class AuthApiController {
                 email = auth.getName();
             } else if (session != null && session.getAttribute("userEmail") != null) {
                 email = (String) session.getAttribute("userEmail");
+            }
+        }
+
+        if (email == null && request != null && request.getCookies() != null) {
+            for (jakarta.servlet.http.Cookie c : request.getCookies()) {
+                if ("smarthire_user_email".equals(c.getName()) && c.getValue() != null && !c.getValue().isBlank()) {
+                    email = c.getValue().trim().toLowerCase();
+                    break;
+                }
             }
         }
 
@@ -289,6 +299,11 @@ public class AuthApiController {
                     "success", true,
                     "message", "Google authentication successful",
                     "user", mapUser(user)
+            ));
+        } catch (IllegalStateException | IllegalArgumentException ex) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "success", false,
+                    "message", ex.getMessage()
             ));
         } catch (Exception ex) {
             log.error("Google authentication error: ", ex);

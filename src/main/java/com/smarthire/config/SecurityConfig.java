@@ -1,5 +1,8 @@
 package com.smarthire.config;
 
+import com.smarthire.security.oauth2.CustomOAuth2UserService;
+import com.smarthire.security.oauth2.OAuth2AuthenticationFailureHandler;
+import com.smarthire.security.oauth2.OAuth2AuthenticationSuccessHandler;
 import com.smarthire.service.CustomUserDetailsService;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.context.annotation.Bean;
@@ -32,13 +35,22 @@ public class SecurityConfig {
 
     private final CustomUserDetailsService userDetailsService;
     private final PasswordEncoder passwordEncoder;
+    private final CustomOAuth2UserService customOAuth2UserService;
+    private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
+    private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
 
     public SecurityConfig(
             CustomUserDetailsService userDetailsService,
-            PasswordEncoder passwordEncoder)
+            PasswordEncoder passwordEncoder,
+            CustomOAuth2UserService customOAuth2UserService,
+            OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler,
+            OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler)
     {
         this.userDetailsService = userDetailsService;
         this.passwordEncoder = passwordEncoder;
+        this.customOAuth2UserService = customOAuth2UserService;
+        this.oAuth2AuthenticationSuccessHandler = oAuth2AuthenticationSuccessHandler;
+        this.oAuth2AuthenticationFailureHandler = oAuth2AuthenticationFailureHandler;
     }
 
     @Bean
@@ -153,6 +165,8 @@ public class SecurityConfig {
                                 "/register",
                                 "/forgot-password",
                                 "/logout",
+                                "/oauth2/**",
+                                "/login/oauth2/**",
                                 "/api/**",
                                 "/ws/**",
                                 "/ws-raw/**",
@@ -180,6 +194,8 @@ public class SecurityConfig {
                                 "/js/**",
                                 "/images/**",
                                 "/favicon.ico",
+                                "/oauth2/**",
+                                "/login/oauth2/**",
                                 "/api/**",
                                 "/ws/**",
                                 "/ws-raw/**",
@@ -205,6 +221,22 @@ public class SecurityConfig {
                         .successHandler(successHandler)
                         .failureHandler(failureHandler)
                         .permitAll()
+                )
+
+                // Real Google OAuth 2.0 Login
+                .oauth2Login(oauth2 -> oauth2
+                        .loginPage("/login")
+                        .authorizationEndpoint(auth -> auth
+                                .baseUri("/oauth2/authorization")
+                        )
+                        .redirectionEndpoint(redir -> redir
+                                .baseUri("/login/oauth2/code/*")
+                        )
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(customOAuth2UserService)
+                        )
+                        .successHandler(oAuth2AuthenticationSuccessHandler)
+                        .failureHandler(oAuth2AuthenticationFailureHandler)
                 )
 
                 // Server-side session
