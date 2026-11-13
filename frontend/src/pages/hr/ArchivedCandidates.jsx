@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import CustomSelect from '../../components/common/CustomSelect';
+import ConfirmPopover from '../../components/common/ConfirmPopover';
 import EmptyState from '../../components/common/EmptyState';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import useRealtimeSync from '../../hooks/useRealtimeSync';
@@ -16,6 +17,8 @@ const ArchivedCandidates = () => {
   const [actionSuccess, setActionSuccess] = useState('');
   const [actionError, setActionError] = useState('');
   const [restoringId, setRestoringId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
+  const [deleteConfirm, setDeleteConfirm] = useState(null);
 
   const fetchArchived = useCallback(async () => {
     try {
@@ -51,6 +54,32 @@ const ArchivedCandidates = () => {
       setTimeout(() => setActionError(''), 4500);
     } finally {
       setRestoringId(null);
+    }
+  };
+
+  // Permanently delete candidate and resume from database
+  const handlePermanentDelete = async (id, name) => {
+    setDeletingId(id);
+    setActionSuccess('');
+    setActionError('');
+    try {
+      const res = await api.delete(`/dashboard/candidates/${id}/permanent`);
+      setCandidates((prev) => prev.filter((c) => c.id !== id));
+      setActionSuccess(res.data?.message || `Candidate "${name || 'Candidate'}" has been permanently deleted from database.`);
+      setTimeout(() => setActionSuccess(''), 4500);
+    } catch (err) {
+      console.error('Failed to permanently delete candidate:', err);
+      try {
+        const res = await api.delete(`/dashboard/candidates/${id}?permanent=true`);
+        setCandidates((prev) => prev.filter((c) => c.id !== id));
+        setActionSuccess(res.data?.message || `Candidate "${name || 'Candidate'}" has been permanently deleted from database.`);
+        setTimeout(() => setActionSuccess(''), 4500);
+      } catch (fallbackErr) {
+        setActionError(fallbackErr.response?.data?.message || err.response?.data?.message || 'Could not permanently delete candidate. Please try again.');
+        setTimeout(() => setActionError(''), 4500);
+      }
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -329,17 +358,38 @@ const ArchivedCandidates = () => {
 
                       {/* Actions */}
                       <td style={{ textAlign: 'right' }}>
-                        <button
-                          type="button"
-                          className="btn btn-outline-success btn-sm"
-                          disabled={restoringId === candidate.id}
-                          onClick={() => handleRestore(candidate.id, candidate.candidateName)}
-                          style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                          title="Restore candidate to active Candidate Pool"
-                        >
-                          <i className={`bi ${restoringId === candidate.id ? 'bi-hourglass-split' : 'bi-arrow-counterclockwise'}`}></i>
-                          {restoringId === candidate.id ? 'Restoring...' : 'Unarchive / Restore'}
-                        </button>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: '8px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-outline-success btn-sm"
+                            disabled={restoringId === candidate.id || deletingId === candidate.id}
+                            onClick={() => handleRestore(candidate.id, candidate.candidateName)}
+                            style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                            title="Restore candidate to active Candidate Pool"
+                          >
+                            <i className={`bi ${restoringId === candidate.id ? 'bi-hourglass-split' : 'bi-arrow-counterclockwise'}`}></i>
+                            {restoringId === candidate.id ? 'Restoring...' : 'Unarchive / Restore'}
+                          </button>
+
+                          <button
+                            type="button"
+                            className="btn btn-outline-danger btn-sm"
+                            disabled={restoringId === candidate.id || deletingId === candidate.id}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDeleteConfirm({
+                                id: candidate.id,
+                                name: candidate.candidateName || 'Candidate',
+                                anchorEl: e.currentTarget,
+                              });
+                            }}
+                            style={{ fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '6px' }}
+                            title="Permanently delete candidate and resume from database"
+                          >
+                            <i className={`bi ${deletingId === candidate.id ? 'bi-hourglass-split' : 'bi-trash3-fill'}`}></i>
+                            {deletingId === candidate.id ? 'Deleting...' : 'Permanently Delete'}
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   );
@@ -361,6 +411,23 @@ const ArchivedCandidates = () => {
           />
         )}
       </article>
+
+      {/* Popover Action Confirmation for Permanent Deletion */}
+      {deleteConfirm && (
+        <ConfirmPopover
+          anchorEl={deleteConfirm.anchorEl}
+          title="Permanently Delete Candidate?"
+          message={`Are you sure you want to permanently delete "${deleteConfirm.name}" and their resume from the database? This action cannot be undone.`}
+          confirmText="Delete Permanently"
+          cancelText="Cancel"
+          danger={true}
+          onConfirm={() => {
+            handlePermanentDelete(deleteConfirm.id, deleteConfirm.name);
+            setDeleteConfirm(null);
+          }}
+          onClose={() => setDeleteConfirm(null)}
+        />
+      )}
     </div>
   );
 };

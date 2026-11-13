@@ -263,7 +263,9 @@ public class DashboardApiController {
 
     @DeleteMapping(value = {"/history/{id:[0-9]+}", "/applications/{id:[0-9]+}", "/candidates/{id:[0-9]+}"})
     @org.springframework.transaction.annotation.Transactional
-    public ResponseEntity<?> deleteAnalysisRecord(@PathVariable("id") Long id) {
+    public ResponseEntity<?> deleteAnalysisRecord(
+            @PathVariable("id") Long id,
+            @RequestParam(value = "permanent", required = false, defaultValue = "false") boolean permanent) {
         Optional<ResumeAnalysis> analysisOpt = resumeAnalysisRepository.findById(id);
         if (analysisOpt.isPresent()) {
             ResumeAnalysis analysis = analysisOpt.get();
@@ -284,6 +286,41 @@ public class DashboardApiController {
                             "message", "You do not have permission to delete this record."
                     ));
                 }
+            }
+
+            // Permanent Delete requested (from Archived Candidates Pool or explicit purge)
+            if (permanent) {
+                log.info("Permanently deleting ResumeAnalysis record [id={}] ('{}' - '{}')", id, candName, role);
+                resumeAnalysisRepository.delete(analysis);
+                resumeAnalysisRepository.flush();
+
+                if (resume != null && resume.getId() != null) {
+                    long remaining = resumeAnalysisRepository.countByResumeId(resume.getId());
+                    if (remaining == 0) {
+                        try {
+                            resumeRepository.delete(resume);
+                            resumeRepository.flush();
+                            log.info("Cascaded permanent delete to parent Resume [id={}]", resume.getId());
+                        } catch (Exception ex) {
+                            log.warn("Could not delete associated resume [id={}]: {}", resume.getId(), ex.getMessage());
+                        }
+                    }
+                }
+
+                try {
+                    realtimeSyncService.broadcastEvent("CANDIDATE_PERMANENTLY_DELETED", "DELETE", Map.of(
+                            "id", id,
+                            "candidateName", candName,
+                            "targetJobRole", role
+                    ));
+                    realtimeSyncService.notifyResumeDeleted(id, candName, role);
+                } catch (Exception ignored) {}
+
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "permanent", true,
+                        "message", "Candidate '" + candName + "' has been permanently deleted from database."
+                ));
             }
 
             // If an HR / Recruiter deletes a candidate's resume, notify the candidate with dynamic message and HR name
@@ -470,6 +507,12 @@ public class DashboardApiController {
                 "success", true,
                 "message", "Candidate '" + candName + "' successfully restored to active Candidate Pool."
         ));
+    }
+
+    @DeleteMapping(value = {"/candidates/{id:[0-9]+}/permanent", "/candidates/archived/{id:[0-9]+}"})
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> permanentlyDeleteArchivedCandidate(@PathVariable("id") Long id) {
+        return deleteAnalysisRecord(id, true);
     }
 
     @PatchMapping("/applications/{id}/stage")
