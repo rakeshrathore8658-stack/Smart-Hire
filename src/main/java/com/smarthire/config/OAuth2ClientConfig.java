@@ -56,4 +56,5 @@ public class OAuth2ClientConfig {
 
         return new InMemoryClientRegistrationRepository(registrations);
     }
+
 }

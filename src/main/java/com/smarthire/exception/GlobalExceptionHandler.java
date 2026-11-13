@@ -4,9 +4,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.catalina.connector.ClientAbortException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotWritableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.HttpMediaTypeNotSupportedException;
@@ -18,6 +20,8 @@ import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.servlet.NoHandlerFoundException;
 import org.springframework.web.servlet.resource.NoResourceFoundException;
 
+import java.io.IOException;
+import java.net.SocketException;
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.HashMap;
@@ -320,11 +324,66 @@ public class GlobalExceptionHandler {
     }
 
     /**
-     * 12. Catch-All for Any Other Unhandled Exception (500)
+     * Helper to detect client connection aborts (browser refresh, navigation, or socket closed).
+     */
+    private boolean isClientAbort(Throwable t) {
+        Throwable current = t;
+        while (current != null) {
+            String className = current.getClass().getName();
+            String msg = current.getMessage() != null ? current.getMessage().toLowerCase() : "";
+            if (className.contains("ClientAbortException")
+                    || current instanceof SocketException
+                    || msg.contains("connection was aborted")
+                    || msg.contains("broken pipe")
+                    || msg.contains("connection reset")
+                    || msg.contains("servletoutputstream failed to write")) {
+                return true;
+            }
+            current = current.getCause();
+        }
+        return false;
+    }
+
+    /**
+     * 12. Client Connection Abort (Browser reload, tab close, or socket disconnect)
+     */
+    @ExceptionHandler({ClientAbortException.class, IOException.class})
+    public void handleClientAbort(Exception ex, HttpServletRequest request) {
+        if (isClientAbort(ex)) {
+            log.debug("Client closed connection prematurely on URI: {} ({})",
+                    request != null ? request.getRequestURI() : "unknown", ex.getMessage());
+            return;
+        }
+        log.warn("I/O error occurred on URI: {} - {}",
+                request != null ? request.getRequestURI() : "unknown", ex.getMessage());
+    }
+
+    /**
+     * 13. HttpMessageNotWritableException (e.g. Broken pipe while serializing JSON to disconnected client)
+     */
+    @ExceptionHandler(HttpMessageNotWritableException.class)
+    public Object handleHttpMessageNotWritable(HttpMessageNotWritableException ex, HttpServletRequest request, HttpServletResponse response) {
+        if (isClientAbort(ex)) {
+            log.debug("Client disconnected while writing JSON response on URI: {} ({})",
+                    request != null ? request.getRequestURI() : "unknown", ex.getMessage());
+            return null;
+        }
+        log.error("Could not write JSON response on URI {}: {}",
+                request != null ? request.getRequestURI() : "unknown", ex.getMessage(), ex);
+        return handleGlobalException(ex, request, response);
+    }
+
+    /**
+     * 14. Catch-All for Any Other Unhandled Exception (500)
      */
     @ExceptionHandler(Exception.class)
     public Object handleGlobalException(Exception ex, HttpServletRequest request, HttpServletResponse response) {
-        log.error("Unhandled exception caught by GlobalExceptionHandler on URI {}: ", request.getRequestURI(), ex);
+        if (isClientAbort(ex)) {
+            log.debug("Client closed socket connection on URI {}: {}",
+                    request != null ? request.getRequestURI() : "unknown", ex.getMessage());
+            return null;
+        }
+        log.error("Unhandled exception caught by GlobalExceptionHandler on URI {}: ", request != null ? request.getRequestURI() : "/", ex);
         HttpStatus status = HttpStatus.INTERNAL_SERVER_ERROR;
         String userFriendlyMessage = "An unexpected error occurred while processing your request. Please try again or contact support if the problem persists.";
 
