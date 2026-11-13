@@ -37,7 +37,10 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
             throw ex;
         } catch (Exception ex) {
             log.error("Failed to process Google OAuth2 user: {}", ex.getMessage(), ex);
-            throw new OAuth2AuthenticationException(new OAuth2Error("oauth2_processing_error", ex.getMessage(), null));
+            String msg = ex.getMessage() != null ? ex.getMessage() : "Google authentication encountered an issue.";
+            String errorCode = (msg.toLowerCase().contains("role") || msg.toLowerCase().contains("portal"))
+                    ? "portal_mismatch" : "oauth2_processing_error";
+            throw new OAuth2AuthenticationException(new OAuth2Error(errorCode, msg, null), ex);
         }
     }
 

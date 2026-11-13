@@ -25,11 +25,29 @@ const Login = () => {
   useEffect(() => {
     const oauthError = searchParams.get('oauth_error') || searchParams.get('error');
     if (oauthError) {
-      if (oauthError === 'portal_mismatch') {
-        const portal = isHr ? 'Job Seeker' : 'HR / Recruiter';
-        setErrorMessage(`Role Conflict: Ye account ${portal} portal ke liye registered hai. Ek email address ke corresponding sirf or sirf ek hi dashboard (${portal}) me sign in kar sakte hain. Please ${portal} portal select karke sign in karein.`);
+      const decoded = decodeURIComponent(oauthError).trim();
+      const lower = decoded.toLowerCase();
+
+      // Check if this error indicates a role/portal mismatch
+      if (
+        oauthError === 'portal_mismatch' ||
+        lower.includes('encountered an issue') ||
+        lower.includes('portal') ||
+        lower.includes('role') ||
+        lower.includes('registered hai') ||
+        lower.includes('mismatch')
+      ) {
+        if (decoded.includes('already') && (decoded.includes('portal') || decoded.includes('registered'))) {
+          setErrorMessage(decoded);
+        } else {
+          const registeredPortal = isHr ? 'Job Seeker' : 'HR / Recruiter';
+          const selectedPortal = isHr ? 'HR / Recruiter' : 'Job Seeker';
+          setErrorMessage(
+            `Role Mismatch: Aapka email account '${registeredPortal}' portal ke liye registered hai, jabki aapne '${selectedPortal}' portal select kiya tha. Ek email address ke corresponding sirf or sirf ek hi dashboard (${registeredPortal}) me sign in kar sakte hain. Please '${registeredPortal}' tab select karke sign in karein.`
+          );
+        }
       } else {
-        setErrorMessage(decodeURIComponent(oauthError));
+        setErrorMessage(decoded);
       }
     }
 
@@ -276,21 +294,45 @@ const Login = () => {
                 gap: '12px',
                 padding: '14px 18px',
                 borderRadius: 'var(--radius-md)',
-                background: 'var(--danger-bg)',
+                background: errorMessage.toLowerCase().includes('role') ? 'rgba(239, 68, 68, 0.08)' : 'var(--danger-bg)',
                 color: 'var(--danger)',
-                border: '1px solid rgba(220, 38, 38, 0.3)',
+                border: '1px solid rgba(220, 38, 38, 0.35)',
               }}
             >
               <span style={{ fontSize: '1.4rem', display: 'flex', marginTop: '2px' }} aria-hidden="true">
-                <i className="bi bi-shield-x"></i>
+                <i className={`bi ${errorMessage.toLowerCase().includes('role') ? 'bi-exclamation-octagon-fill' : 'bi-shield-x'}`}></i>
               </span>
-              <div>
-                <strong style={{ display: 'block', fontSize: '0.92rem', marginBottom: '3px' }}>
-                  Authentication Failed
+              <div style={{ flex: 1 }}>
+                <strong style={{ display: 'block', fontSize: '0.94rem', marginBottom: '4px' }}>
+                  {errorMessage.toLowerCase().includes('role') ? 'Portal Role Mismatch' : 'Authentication Failed'}
                 </strong>
-                <span style={{ fontSize: '0.85rem', lineHeight: 1.5, display: 'block' }}>
+                <span style={{ fontSize: '0.85rem', lineHeight: 1.6, display: 'block' }}>
                   {errorMessage}
                 </span>
+                {errorMessage.toLowerCase().includes('role') && (
+                  <div style={{ marginTop: '10px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{
+                        padding: '6px 14px',
+                        fontSize: '0.8rem',
+                        fontWeight: 600,
+                        border: '1px solid var(--danger)',
+                        color: 'var(--danger)',
+                        background: 'var(--bg-card, #fff)',
+                        borderRadius: '6px',
+                        cursor: 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px'
+                      }}
+                      onClick={() => handleRoleSelect(isHr ? 'USER' : 'HR')}
+                    >
+                      <i className="bi bi-arrow-repeat"></i> Switch to {isHr ? 'Job Seeker' : 'HR / Recruiter'} Tab &amp; Sign In
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}

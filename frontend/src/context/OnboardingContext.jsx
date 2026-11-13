@@ -369,11 +369,16 @@ export const OnboardingProvider = ({ children }) => {
       setTourSeen(seen);
       hasCheckedUserRef.current = userEmailKey;
 
-      // ONLY show for brand new users on their very first login.
-      // If user has seen it, completed it, or skipped it, NEVER auto-show again on 2nd login!
-      const isFirstTimeUser = !completed && !skipped && !seen;
+      // Check if user just registered or completed 1st Google OAuth sign-in
+      const isFirstLoginFlag = typeof window !== 'undefined' && sessionStorage.getItem('smarthire_first_login') === 'true';
+      const isFirstTimeUser = isFirstLoginFlag || (!completed && !skipped && !seen);
 
       if (isFirstTimeUser && !isActive) {
+        if (isFirstLoginFlag) {
+          try {
+            sessionStorage.removeItem('smarthire_first_login');
+          } catch (_) {}
+        }
         // Allow dashboard layout and components 600ms to mount comfortably
         const timer = setTimeout(() => {
           if (isMounted) {

@@ -1004,9 +1004,9 @@ const ResumeAnalyzer = () => {
                     </span>
                   </div>
 
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
+                  <div className="ai-engine-grid">
                     {/* Provider Selector */}
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <label
                         htmlFor="aiProviderSelect"
                         style={{
@@ -1039,7 +1039,7 @@ const ResumeAnalyzer = () => {
                     </div>
 
                     {/* Model Selector */}
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <label
                         htmlFor="modelSelect"
                         style={{

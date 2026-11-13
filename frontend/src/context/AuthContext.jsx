@@ -13,10 +13,16 @@ export const AuthProvider = ({ children }) => {
     if (u && u.email) {
       const email = u.email.trim().toLowerCase();
       try {
+        const prevEmail = sessionStorage.getItem('smarthire_user_email') || localStorage.getItem('smarthire_user_email');
+        if (prevEmail && prevEmail.trim().toLowerCase() !== email) {
+          clearUserSession();
+        }
         sessionStorage.setItem('smarthire_user_email', email);
         sessionStorage.setItem('smarthire_user', JSON.stringify(u));
+        sessionStorage.setItem('smarthire_user_role', u.role || 'USER');
         localStorage.setItem('smarthire_user_email', email);
         localStorage.setItem('smarthire_user', JSON.stringify(u));
+        localStorage.setItem('smarthire_user_role', u.role || 'USER');
         if (token && typeof token === 'string' && token.trim()) {
           sessionStorage.setItem('token', token.trim());
           sessionStorage.setItem('smarthire_token', token.trim());
@@ -100,6 +106,7 @@ export const AuthProvider = ({ children }) => {
         const nameParam = params.get('name');
         const tokenParam = params.get('token') || params.get('access_token');
         const oauthSuccess = params.get('oauth') === 'success' || params.get('oauth_success') === 'true';
+        const isNewUser = params.get('new_user') === 'true' || params.get('first_time') === 'true';
 
         if (tokenParam && tokenParam.trim()) {
           try {
@@ -107,6 +114,12 @@ export const AuthProvider = ({ children }) => {
             sessionStorage.setItem('smarthire_token', tokenParam.trim());
             localStorage.setItem('token', tokenParam.trim());
             localStorage.setItem('smarthire_token', tokenParam.trim());
+          } catch (_) {}
+        }
+
+        if (isNewUser) {
+          try {
+            sessionStorage.setItem('smarthire_first_login', 'true');
           } catch (_) {}
         }
 
@@ -132,6 +145,9 @@ export const AuthProvider = ({ children }) => {
       const token = response.data.token;
       setUser(u);
       saveUserSession(u, token);
+      try {
+        sessionStorage.setItem('smarthire_first_login', 'true');
+      } catch (_) {}
       if (u.themePreference) {
         setTheme(u.themePreference, false);
       }
@@ -147,6 +163,9 @@ export const AuthProvider = ({ children }) => {
       const token = response.data.token;
       setUser(u);
       saveUserSession(u, token);
+      try {
+        sessionStorage.setItem('smarthire_first_login', 'true');
+      } catch (_) {}
       if (u.themePreference) {
         setTheme(u.themePreference, false);
       }
@@ -162,6 +181,9 @@ export const AuthProvider = ({ children }) => {
       const token = response.data.token;
       setUser(u);
       saveUserSession(u, token);
+      try {
+        sessionStorage.setItem('smarthire_first_login', 'true');
+      } catch (_) {}
       if (u.themePreference) {
         setTheme(u.themePreference, false);
       }

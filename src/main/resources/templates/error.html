@@ -40,7 +40,7 @@
         var base = isProd ? "https://resume-analyzer-sigma-nine.vercel.app" : "http://localhost:5173";
         var search = window.location.search || "";
         if (search.includes("code=") || search.includes("state=") || !search) {
-            search = "?oauth_error=" + encodeURIComponent("Google authentication encountered an issue. Please try signing in again.");
+            search = "?oauth_error=" + encodeURIComponent("Role Mismatch: Ye email address already doosre portal ke liye registered hai. Ek email ke corresponding sirf ek dashboard (Job Seeker ya HR) me sign in kiya ja sakta hai. Please apna registered portal select karke sign in karein.");
         }
         window.location.replace(base + "/login" + search);
     </script>
@@ -56,7 +56,7 @@
         var base = isProd ? "https://resume-analyzer-sigma-nine.vercel.app" : "http://localhost:5173";
         var search = window.location.search || "";
         if (search.includes("code=") || search.includes("state=") || !search) {
-            search = "?oauth_error=" + encodeURIComponent("Google authentication encountered an issue. Please try signing in again.");
+            search = "?oauth_error=" + encodeURIComponent("Role Mismatch: Ye email address already doosre portal ke liye registered hai. Ek email ke corresponding sirf ek dashboard (Job Seeker ya HR) me sign in kiya ja sakta hai. Please apna registered portal select karke sign in karein.");
         }
         document.getElementById("returnBtn").href = base + "/login" + search;
     </script>

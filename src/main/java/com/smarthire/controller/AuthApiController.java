@@ -140,9 +140,10 @@ public class AuthApiController {
         if ("RECRUITER".equals(userDbRole)) userDbRole = "HR";
 
         if (!userDbRole.equalsIgnoreCase(requestedRole)) {
+            String dbPortal = "HR".equalsIgnoreCase(userDbRole) ? "HR / Recruiter" : "Job Seeker";
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
                     "success", false,
-                    "message", "Role mismatch: This account is registered as " + userDbRole + ", please select " + userDbRole + " portal."
+                    "message", "Role Mismatch: Ye email address (" + email + ") already " + dbPortal + " portal ke liye registered hai. Ek email ke corresponding sirf or sirf ek hi dashboard (" + dbPortal + ") me sign in kar sakte hain. Please '" + dbPortal + "' tab select karke sign in karein."
             ));
         }
 

@@ -39,9 +39,24 @@ public class OAuth2AuthenticationFailureHandler extends SimpleUrlAuthenticationF
         log.warn("Google OAuth2 authentication failed: {}", exception.getMessage());
 
         String targetOrigin = resolveFrontendOrigin(request);
-        String errorMsg = exception.getMessage() != null ? exception.getMessage() : "Google authentication failed. Please try again.";
-        if (exception.getCause() != null && exception.getCause().getMessage() != null && !exception.getCause().getMessage().isBlank()) {
+        String errorMsg = null;
+
+        if (exception instanceof org.springframework.security.oauth2.core.OAuth2AuthenticationException oEx) {
+            if (oEx.getError() != null && oEx.getError().getDescription() != null && !oEx.getError().getDescription().isBlank()) {
+                errorMsg = oEx.getError().getDescription();
+            }
+        }
+        if (errorMsg == null && exception.getCause() != null && exception.getCause().getMessage() != null && !exception.getCause().getMessage().isBlank()) {
             errorMsg = exception.getCause().getMessage();
+        }
+        if (errorMsg == null) {
+            errorMsg = exception.getMessage();
+        }
+        if (errorMsg != null) {
+            errorMsg = errorMsg.replaceAll("^\\[[a-zA-Z0-9_-]+\\]\\s*", "").trim();
+        }
+        if (errorMsg == null || errorMsg.isBlank()) {
+            errorMsg = "Google authentication failed. Please try again.";
         }
 
         String encodedError = URLEncoder.encode(errorMsg, StandardCharsets.UTF_8);

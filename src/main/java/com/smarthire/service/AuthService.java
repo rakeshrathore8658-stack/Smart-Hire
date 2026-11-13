@@ -130,10 +130,10 @@ public class AuthService {
             if (!existingRole.equalsIgnoreCase(targetRole)) {
                 String existingLabel = "HR".equalsIgnoreCase(existingRole) ? "HR / Recruiter" : "Job Seeker";
                 String targetLabel = "HR".equalsIgnoreCase(targetRole) ? "HR / Recruiter" : "Job Seeker";
-                throw new IllegalStateException("Ye email address (" + normalizedEmail + ") already "
+                throw new IllegalStateException("Role Mismatch: Ye email address (" + normalizedEmail + ") already "
                         + existingLabel + " portal ke liye registered hai. Ek email ke corresponding sirf or sirf ek dashboard ("
-                        + existingLabel + ") me sign in kar sakte hain. Please "
-                        + existingLabel + " portal se sign in karein.");
+                        + existingLabel + ") me sign in kar sakte hain. Please '"
+                        + existingLabel + "' portal select karke sign in karein.");
             }
 
             boolean needsSave = false;

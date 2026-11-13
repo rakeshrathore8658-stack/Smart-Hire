@@ -320,11 +320,11 @@ const SkillsGap = () => {
                 gap: '16px',
               }}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '14px' }}>
-                <span style={{ fontSize: '1.6rem', color: 'var(--accent)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', flex: '1 1 280px', minWidth: 0 }}>
+                <span style={{ fontSize: '1.6rem', color: 'var(--accent)', flexShrink: 0 }}>
                   <i className="bi bi-bullseye"></i>
                 </span>
-                <div>
+                <div style={{ minWidth: 0 }}>
                   <strong style={{ fontSize: '0.96rem', color: 'var(--text-primary)', display: 'block' }}>
                     Comparing Skills Against Role Benchmark:
                   </strong>
@@ -334,7 +334,7 @@ const SkillsGap = () => {
                 </div>
               </div>
 
-              <div style={{ flex: '1 1 260px', maxWidth: '400px' }}>
+              <div style={{ flex: '1 1 280px', maxWidth: '100%', minWidth: 0, width: '100%' }}>
                 <CustomSelect
                   value={selectedRole}
                   onChange={(val) => setSelectedRole(val)}
@@ -345,8 +345,8 @@ const SkillsGap = () => {
                     },
                     {
                       value: analyzedRole,
-                      label: `${analyzedRole} (From Resume Analysis #${analysis.id})`,
-                      badge: 'Target Role',
+                      label: `${analyzedRole} (Analysis #${analysis.id})`,
+                      badge: 'Target',
                       icon: <i className="bi bi-file-earmark-person text-primary"></i>,
                     },
                     ...(dbJobs.length > 0

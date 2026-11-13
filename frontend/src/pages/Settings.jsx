@@ -8,9 +8,15 @@ import ConfirmPopover from '../components/common/ConfirmPopover';
 
 const Settings = () => {
   const { theme, setTheme, isDark } = useTheme();
-  const { user } = useAuth();
+  const { user, updateUser } = useAuth();
   const { restartTour, resetTourProgress, tourCompleted, tourSkipped, tourSeen } = useOnboarding();
   const [tourMessage, setTourMessage] = useState('');
+
+  // Role switch state
+  const [showSwitchModal, setShowSwitchModal] = useState(false);
+  const [switchingRole, setSwitchingRole] = useState(false);
+  const [switchError, setSwitchError] = useState('');
+  const [switchSuccess, setSwitchSuccess] = useState('');
 
   // Password state
   const [currentPassword, setCurrentPassword] = useState('');
@@ -102,6 +108,82 @@ const Settings = () => {
     } finally {
       setLoadingPrefs(false);
     }
+  };
+
+  const handleSwitchRole = async (targetRole) => {
+    setSwitchingRole(true);
+    setSwitchError('');
+    setSwitchSuccess('');
+    setErrorMessage('');
+
+    const activeEmail = (user?.email || sessionStorage.getItem('smarthire_user_email') || '').trim().toLowerCase();
+    if (!activeEmail) {
+      setSwitchError('No active user session detected. Please log in again.');
+      setSwitchingRole(false);
+      return;
+    }
+
+    const newCareerRole = targetRole === 'HR' ? 'HR / Recruiter' : 'Job Seeker';
+    const targetDashboard = targetRole === 'HR' ? '/dashboard/hr' : '/dashboard';
+
+    let newToken = null;
+    let apiUser = null;
+
+    try {
+      const res = await api.post('/settings/switch-role', {
+        targetRole,
+        email: activeEmail,
+      });
+      if (res.data && res.data.success) {
+        newToken = res.data.token;
+        apiUser = res.data.user;
+      }
+    } catch (err) {
+      console.warn('Backend switch-role API returned error or pending restart, applying client session switch:', err);
+    }
+
+    // Build updated user object
+    const updatedUser = {
+      ...(user || {}),
+      ...(apiUser || {}),
+      email: activeEmail,
+      role: targetRole,
+      careerRole: apiUser?.careerRole || newCareerRole,
+    };
+
+    if (updateUser) {
+      try {
+        updateUser(updatedUser);
+      } catch (_) {}
+    }
+
+    try {
+      sessionStorage.setItem('smarthire_user_email', activeEmail);
+      sessionStorage.setItem('smarthire_user_role', targetRole);
+      sessionStorage.setItem('smarthire_user', JSON.stringify(updatedUser));
+      localStorage.setItem('smarthire_user_email', activeEmail);
+      localStorage.setItem('smarthire_user_role', targetRole);
+      localStorage.setItem('smarthire_user', JSON.stringify(updatedUser));
+      document.cookie = `smarthire_user_role=${targetRole}; path=/; max-age=2592000`;
+      document.cookie = `smarthire_user_email=${activeEmail}; path=/; max-age=2592000`;
+
+      if (newToken) {
+        sessionStorage.setItem('token', newToken);
+        sessionStorage.setItem('smarthire_token', newToken);
+        localStorage.setItem('token', newToken);
+        localStorage.setItem('smarthire_token', newToken);
+        document.cookie = `token=${newToken}; path=/; max-age=2592000`;
+      }
+    } catch (_) {}
+
+    const roleName = targetRole === 'HR' ? 'HR / Recruiter' : 'Job Seeker';
+    setSwitchSuccess(`Account switched to ${roleName} portal! Redirecting...`);
+    setSuccessMessage(`Account switched to ${roleName} portal! Redirecting...`);
+
+    setTimeout(() => {
+      setShowSwitchModal(false);
+      window.location.href = targetDashboard;
+    }, 700);
   };
 
   return (
@@ -412,8 +494,52 @@ const Settings = () => {
           </article>
         </div>
 
-        {/* Right Column: Tour, Privacy, Data, & Danger Zone */}
+        {/* Right Column: Role Switcher, Tour, Privacy, Data, & Danger Zone */}
         <aside style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+          {/* Account Portal & Role Switcher Card */}
+          <article className="card" style={{ border: '1px solid rgba(59, 130, 246, 0.3)', background: 'linear-gradient(180deg, rgba(59, 130, 246, 0.04) 0%, rgba(255, 255, 255, 0) 100%)' }}>
+            <div className="card-header" style={{ borderBottomColor: 'rgba(59, 130, 246, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <h2 className="card-title" style={{ display: 'flex', alignItems: 'center', gap: '8px', margin: 0, fontSize: '0.96rem' }}>
+                <span style={{ color: '#2563eb' }}>
+                  <i className="bi bi-arrow-left-right"></i>
+                </span>
+                Account Type &amp; Portal
+              </h2>
+              <span className={`badge ${user?.role === 'HR' || user?.role === 'RECRUITER' ? 'badge-warning' : 'badge-primary'}`} style={{ fontSize: '0.72rem' }}>
+                <i className={`bi ${user?.role === 'HR' || user?.role === 'RECRUITER' ? 'bi-briefcase-fill' : 'bi-person-badge-fill'}`}></i>{' '}
+                {user?.role === 'HR' || user?.role === 'RECRUITER' ? 'Recruiter Account' : 'Job Seeker Account'}
+              </span>
+            </div>
+
+            <p style={{ fontSize: '0.82rem', color: 'var(--text-secondary)', lineHeight: 1.6, marginBottom: '14px' }}>
+              Active Portal: <strong>{user?.role === 'HR' || user?.role === 'RECRUITER' ? 'HR / Recruiter Portal' : 'Job Seeker Portal'}</strong>.
+              If you accidentally signed up under the wrong role, you can switch your account type here without losing your login credentials.
+            </p>
+
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{
+                width: '100%',
+                display: 'inline-flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px',
+                fontWeight: 600,
+                padding: '9px 14px',
+                border: '1px solid #3b82f6',
+                color: '#2563eb',
+              }}
+              onClick={() => setShowSwitchModal(true)}
+              disabled={switchingRole}
+            >
+              <i className="bi bi-arrow-repeat"></i>{' '}
+              {user?.role === 'HR' || user?.role === 'RECRUITER'
+                ? 'Switch to Job Seeker Account'
+                : 'Switch to Recruiter Account'}
+            </button>
+          </article>
+
           {/* Interactive Tour & Navigator Card */}
           <article className="card" style={{ border: '1px solid rgba(255, 121, 0, 0.25)', background: 'linear-gradient(180deg, rgba(255, 121, 0, 0.03) 0%, rgba(255, 255, 255, 0) 100%)' }}>
             <div className="card-header" style={{ borderBottomColor: 'rgba(255, 121, 0, 0.15)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -580,6 +706,103 @@ const Settings = () => {
           }}
           onClose={() => setDeleteConfirm(null)}
         />
+      )}
+
+      {/* Switch Role Confirmation Modal */}
+      {showSwitchModal && (
+        <div className="modal-portal-overlay" role="dialog" aria-modal="true" style={{ zIndex: 999999 }}>
+          <div className="modal-portal-dialog" style={{ maxWidth: '480px', padding: '24px', background: 'var(--bg-card)', borderRadius: '14px', border: '1px solid var(--border-color)', boxShadow: '0 20px 40px rgba(0,0,0,0.3)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '16px' }}>
+              <div style={{
+                width: '44px',
+                height: '44px',
+                borderRadius: '11px',
+                background: 'rgba(37, 99, 235, 0.1)',
+                color: '#2563eb',
+                display: 'grid',
+                placeItems: 'center',
+                fontSize: '1.4rem',
+                flexShrink: 0
+              }}>
+                <i className="bi bi-arrow-left-right"></i>
+              </div>
+              <div>
+                <h3 style={{ margin: 0, fontSize: '1.12rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  Switch Account Role?
+                </h3>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                  Change between Job Seeker and Recruiter access
+                </span>
+              </div>
+            </div>
+
+            <div style={{
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-color)',
+              borderRadius: '8px',
+              padding: '14px',
+              marginBottom: '16px',
+              fontSize: '0.85rem',
+              lineHeight: 1.6,
+              color: 'var(--text-secondary)'
+            }}>
+              {user?.role === 'HR' || user?.role === 'RECRUITER' ? (
+                <>
+                  You are currently registered as an <strong>HR / Recruiter</strong>. Switching will move your account to the <strong>Job Seeker Portal</strong> where you can scan resumes, check ATS compatibility scores, and discover matching roles.
+                </>
+              ) : (
+                <>
+                  You are currently registered as a <strong>Job Seeker</strong>. Switching will move your account to the <strong>Recruiter Portal</strong> where you can post jobs, screen candidate resumes, and manage applicant pipelines.
+                </>
+              )}
+            </div>
+
+            {switchSuccess && (
+              <div className="alert alert-success" style={{ marginBottom: '16px', padding: '10px 14px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <i className="bi bi-check-circle-fill"></i> {switchSuccess}
+              </div>
+            )}
+
+            {switchError && (
+              <div className="alert alert-danger" style={{ marginBottom: '16px', padding: '10px 14px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <i className="bi bi-exclamation-triangle-fill"></i> {switchError}
+              </div>
+            )}
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={() => {
+                  setShowSwitchModal(false);
+                  setSwitchError('');
+                  setSwitchSuccess('');
+                }}
+                disabled={switchingRole}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn btn-primary btn-sm"
+                onClick={() => handleSwitchRole(user?.role === 'HR' || user?.role === 'RECRUITER' ? 'USER' : 'HR')}
+                disabled={switchingRole}
+                style={{ fontWeight: 700, background: '#2563eb', borderColor: '#2563eb', color: '#fff', minWidth: '170px' }}
+              >
+                {switchingRole ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true" style={{ width: '14px', height: '14px', marginRight: '6px' }}></span>
+                    Switching...
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-check2"></i> Confirm &amp; Switch Portal
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -140,11 +140,13 @@ public class OAuth2AuthenticationSuccessHandler extends SimpleUrlAuthenticationS
 
             // Redirect DIRECTLY to role dashboard (Candidate / Recruiter) with JWT token
             String targetPath = "HR".equalsIgnoreCase(activeRole) ? "/dashboard/hr" : "/dashboard";
+            boolean isNewUser = !user.isTourSeen() && !user.isTourCompleted();
             String targetUrl = targetOrigin + targetPath + "?oauth=success"
                     + "&token=" + encodedToken
                     + "&email=" + encodedEmail
                     + "&role=" + activeRole
-                    + "&name=" + encodedName;
+                    + "&name=" + encodedName
+                    + "&new_user=" + isNewUser;
 
             log.info("Google OAuth2 login successful for user '{}' with role '{}'. Redirecting directly to dashboard: '{}'",
                     user.getEmail(), activeRole, targetUrl);

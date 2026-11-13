@@ -25,22 +25,34 @@ api.interceptors.request.use((config) => {
       window.dispatchEvent(new CustomEvent('smarthire:loading-start'));
     }
 
-    // Attach JWT token if present in localStorage or sessionStorage
+    // Attach JWT token if present: ALWAYS prioritize active tab sessionStorage over localStorage
     let token = null;
     if (typeof window !== 'undefined') {
-      token = localStorage.getItem('token') || sessionStorage.getItem('token')
-        || localStorage.getItem('smarthire_token') || sessionStorage.getItem('smarthire_token');
+      token = sessionStorage.getItem('token') || sessionStorage.getItem('smarthire_token')
+        || localStorage.getItem('token') || localStorage.getItem('smarthire_token');
     }
     if (token && token.trim()) {
       config.headers['Authorization'] = `Bearer ${token.trim()}`;
     }
 
-    // Attach user email header for session fallback compatibility
+    // Attach user email header for session fallback compatibility: prioritize active sessionStorage over localStorage
     let email = null;
     if (typeof window !== 'undefined') {
-      email = sessionStorage.getItem('smarthire_user_email') || localStorage.getItem('smarthire_user_email');
+      email = sessionStorage.getItem('smarthire_user_email');
       if (!email) {
-        const stored = sessionStorage.getItem('smarthire_user') || localStorage.getItem('smarthire_user');
+        const stored = sessionStorage.getItem('smarthire_user');
+        if (stored) {
+          try {
+            const u = JSON.parse(stored);
+            if (u?.email) email = u.email;
+          } catch (_) {}
+        }
+      }
+      if (!email) {
+        email = localStorage.getItem('smarthire_user_email');
+      }
+      if (!email) {
+        const stored = localStorage.getItem('smarthire_user');
         if (stored) {
           try {
             const u = JSON.parse(stored);
