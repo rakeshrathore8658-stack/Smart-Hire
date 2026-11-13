@@ -4,6 +4,8 @@ import com.smarthire.dto.RegisterRequest;
 import com.smarthire.dto.UserResponse;
 import com.smarthire.entity.User;
 import com.smarthire.repository.UserRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -12,6 +14,8 @@ import java.util.Optional;
 
 @Service
 public class AuthService {
+
+    private static final Logger log = LoggerFactory.getLogger(AuthService.class);
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -137,9 +141,12 @@ public class AuthService {
                 user.setGoogleId(googleId.trim());
                 needsSave = true;
             }
-            if (user.getAvatarUrl() == null && avatarUrl != null && !avatarUrl.isBlank()) {
-                user.setAvatarUrl(avatarUrl.trim());
-                needsSave = true;
+            if (avatarUrl != null && !avatarUrl.isBlank()) {
+                String safeAvatar = sanitizeAvatarUrl(avatarUrl);
+                if (user.getAvatarUrl() == null || !user.getAvatarUrl().equals(safeAvatar)) {
+                    user.setAvatarUrl(safeAvatar);
+                    needsSave = true;
+                }
             }
             if ((user.getFullName() == null || user.getFullName().isBlank() || "User Account".equalsIgnoreCase(user.getFullName()))
                     && fullName != null && !fullName.isBlank()) {
@@ -147,7 +154,17 @@ public class AuthService {
                 needsSave = true;
             }
             if (needsSave) {
-                userRepository.save(user);
+                try {
+                    userRepository.save(user);
+                } catch (Exception ex) {
+                    log.warn("Notice: Failed to update user profile avatar during Google login, retrying safely: {}", ex.getMessage());
+                    if (user.getAvatarUrl() != null) {
+                        user.setAvatarUrl(null);
+                        userRepository.save(user);
+                    } else {
+                        throw ex;
+                    }
+                }
             }
             return user;
         }
@@ -164,7 +181,7 @@ public class AuthService {
         newUser.setFullName((fullName != null && !fullName.isBlank()) ? fullName.trim() : "Google User");
         newUser.setEmail(normalizedEmail);
         newUser.setGoogleId(googleId != null && !googleId.isBlank() ? googleId.trim() : null);
-        newUser.setAvatarUrl(avatarUrl != null && !avatarUrl.isBlank() ? avatarUrl.trim() : null);
+        newUser.setAvatarUrl(sanitizeAvatarUrl(avatarUrl));
         newUser.setPasswordHash(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
         newUser.setRole(assignedRole);
         newUser.setCareerRole("HR".equalsIgnoreCase(assignedRole) ? "HR / Recruiter" : "Job Seeker");
@@ -179,7 +196,25 @@ public class AuthService {
         newUser.setNotifInterviewUpdates(true);
         newUser.setCreatedAt(java.time.LocalDateTime.now());
 
-        return userRepository.save(newUser);
+        try {
+            return userRepository.save(newUser);
+        } catch (Exception ex) {
+            log.warn("Notice: Failed to persist new user with avatar, retrying safely without avatar: {}", ex.getMessage());
+            if (newUser.getAvatarUrl() != null) {
+                newUser.setAvatarUrl(null);
+                return userRepository.save(newUser);
+            }
+            throw ex;
+        }
+    }
+
+    private String sanitizeAvatarUrl(String url) {
+        if (url == null || url.isBlank()) return null;
+        String clean = url.trim();
+        if (clean.length() > 2000) {
+            return clean.substring(0, 2000);
+        }
+        return clean;
     }
 
     /**

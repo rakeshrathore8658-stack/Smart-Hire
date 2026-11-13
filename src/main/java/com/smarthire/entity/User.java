@@ -35,10 +35,10 @@ public class User {
     @Column(name = "role", nullable = false, length = 20)
     private String role = "USER";
 
-    @Column(name = "google_id", length = 100)
+    @Column(name = "google_id", length = 255)
     private String googleId;
 
-    @Column(name = "avatar_url", length = 500)
+    @Column(name = "avatar_url", columnDefinition = "TEXT")
     private String avatarUrl;
 
     @Column(name = "career_role", length = 50)
