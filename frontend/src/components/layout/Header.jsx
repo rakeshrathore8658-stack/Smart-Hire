@@ -13,7 +13,7 @@ const Header = ({ pageTitle, toggleSidebar, isCollapsed, isMobileOpen }) => {
   const { user, role, logout } = useAuth();
   const { isDark, toggleTheme } = useTheme();
   const { notifications, unreadCount, markAsRead, markAllAsRead } = useNotifications();
-  const { restartTour } = useOnboarding();
+  const { restartTour, isFirstTimeUser } = useOnboarding();
   const navigate = useNavigate();
 
   const [profileOpen, setProfileOpen] = useState(false);
@@ -92,30 +92,32 @@ const Header = ({ pageTitle, toggleSidebar, isCollapsed, isMobileOpen }) => {
             )}
           </div>
 
-          {/* Guided Product Tour Button */}
-          <button
-            type="button"
-            className="btn btn-ghost btn-sm topbar-tour-btn"
-            onClick={restartTour}
-            style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              fontSize: '0.8rem',
-              fontWeight: 700,
-              padding: '6px 12px',
-              borderRadius: '20px',
-              border: '1px solid var(--border-color)',
-              color: 'var(--accent)',
-              background: 'rgba(255, 121, 0, 0.08)',
-              cursor: 'pointer',
-              flexShrink: 0,
-            }}
-            title="Start or restart animated platform spotlight tour"
-          >
-            <i className="bi bi-compass"></i>
-            <span className="topbar-tour-text">Tour</span>
-          </button>
+          {/* Guided Product Tour Button (ONLY visible for brand new first-time users) */}
+          {isFirstTimeUser && (
+            <button
+              type="button"
+              className="btn btn-ghost btn-sm topbar-tour-btn"
+              onClick={restartTour}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                fontSize: '0.8rem',
+                fontWeight: 700,
+                padding: '6px 12px',
+                borderRadius: '20px',
+                border: '1px solid var(--border-color)',
+                color: 'var(--accent)',
+                background: 'rgba(255, 121, 0, 0.08)',
+                cursor: 'pointer',
+                flexShrink: 0,
+              }}
+              title="Start platform guided spotlight tour"
+            >
+              <i className="bi bi-compass"></i>
+              <span className="topbar-tour-text">Tour</span>
+            </button>
+          )}
 
           {/* Notifications Dropdown */}
           <div className="notifications-dropdown-wrapper" ref={notifsRef}>

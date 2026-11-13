@@ -207,13 +207,13 @@ const Sidebar = ({ isMobileOpen, isCollapsed, toggleSidebar, closeSidebar, close
               </NavLink>
 
               <NavLink
-                to="/dashboard/candidates/archived"
+                to="/dashboard/candidates/recently-deleted"
                 className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
                 onClick={closeMobileOnly}
-                title="Archived &amp; Recently Deleted Candidates"
+                title="Recently Deleted Candidates"
               >
-                <span className="sidebar-icon" aria-hidden="true"><i className="bi bi-archive"></i></span>
-                <span className="sidebar-link-text">Archived Pool</span>
+                <span className="sidebar-icon" aria-hidden="true"><i className="bi bi-trash3"></i></span>
+                <span className="sidebar-link-text">Recently Deleted</span>
               </NavLink>
 
               <NavLink

@@ -257,6 +257,7 @@ export const OnboardingProvider = ({ children }) => {
   const [tourCompleted, setTourCompleted] = useState(false);
   const [tourSkipped, setTourSkipped] = useState(false);
   const [tourSeen, setTourSeen] = useState(false);
+  const [isFirstTimeUser, setIsFirstTimeUser] = useState(false);
 
   // Target element geometry
   const [targetRect, setTargetRect] = useState(null);
@@ -371,9 +372,11 @@ export const OnboardingProvider = ({ children }) => {
 
       // Check if user just registered or completed 1st Google OAuth sign-in
       const isFirstLoginFlag = typeof window !== 'undefined' && sessionStorage.getItem('smarthire_first_login') === 'true';
-      const isFirstTimeUser = isFirstLoginFlag || (!completed && !skipped && !seen);
+      const isBrandNewUser = isFirstLoginFlag && !completed && !skipped && !seen;
 
-      if (isFirstTimeUser && !isActive) {
+      setIsFirstTimeUser(isBrandNewUser);
+
+      if (isBrandNewUser && !isActive) {
         if (isFirstLoginFlag) {
           try {
             sessionStorage.removeItem('smarthire_first_login');
@@ -386,6 +389,9 @@ export const OnboardingProvider = ({ children }) => {
           }
         }, 600);
         return () => clearTimeout(timer);
+      } else if (!isBrandNewUser && !seen) {
+        // Automatically mark existing users as seen so they are never prompted
+        savePreferences(completed, skipped, true, 0);
       }
     };
 
@@ -671,6 +677,7 @@ export const OnboardingProvider = ({ children }) => {
 
   const dismissWelcome = useCallback(() => {
     setShowWelcomeModal(false);
+    setIsFirstTimeUser(false);
     // Mark as seen so 2nd login will not auto-open
     savePreferences(false, false, true, 0);
   }, [savePreferences]);
@@ -679,6 +686,7 @@ export const OnboardingProvider = ({ children }) => {
     setIsActive(false);
     setShowWelcomeModal(false);
     setShowCompletionModal(false);
+    setIsFirstTimeUser(false);
     clearTourHighlights();
     savePreferences(false, true, true, currentStepIndex);
   }, [savePreferences, currentStepIndex, clearTourHighlights]);
@@ -686,6 +694,7 @@ export const OnboardingProvider = ({ children }) => {
   const completeTour = useCallback(() => {
     setIsActive(false);
     setShowCompletionModal(true);
+    setIsFirstTimeUser(false);
     clearTourHighlights();
     savePreferences(true, false, true, steps.length);
   }, [savePreferences, steps.length, clearTourHighlights]);
@@ -704,6 +713,7 @@ export const OnboardingProvider = ({ children }) => {
     setTourCompleted(false);
     setTourSkipped(false);
     setTourSeen(false);
+    setIsFirstTimeUser(true);
     clearTourHighlights();
     hasCheckedUserRef.current = null; // allow re-prompting on next visit
     try {
@@ -716,6 +726,7 @@ export const OnboardingProvider = ({ children }) => {
     setIsActive(false);
     setShowWelcomeModal(false);
     setShowCompletionModal(false);
+    setIsFirstTimeUser(false);
     clearTourHighlights();
     // Ensure closing via tooltip X also saves seen so 2nd login doesn't auto-open
     savePreferences(tourCompleted, true, true, currentStepIndex);
@@ -739,6 +750,7 @@ export const OnboardingProvider = ({ children }) => {
         tourCompleted,
         tourSkipped,
         tourSeen,
+        isFirstTimeUser,
         isHr,
         startTour,
         nextStep,

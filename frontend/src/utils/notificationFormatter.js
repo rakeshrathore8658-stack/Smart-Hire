@@ -239,18 +239,29 @@ export const formatNotificationDisplay = (notif = {}) => {
     }
   }
 
-  // 12. Application Archival / Removed
-  else if (actionType === 'APPLICATION_REMOVED' || rawTitle.includes('Archival')) {
-    title = `Application Archival Notice: ${role}`;
-    heading = 'Application Profile Archived';
-    actionPerformed = 'Application profile archived from active candidate roster';
+  // 12. Application Removed / Recently Deleted
+  else if (
+    actionType === 'APPLICATION_REMOVED' ||
+    actionType === 'APPLICATION_DELETED' ||
+    actionType === 'CANDIDATE_ARCHIVED' ||
+    rawTitle.includes('Removed') ||
+    rawTitle.includes('Archival') ||
+    rawMessage.toLowerCase().includes('removed from active') ||
+    rawMessage.toLowerCase().includes('recently deleted')
+  ) {
+    title = rawTitle.includes('Removed') ? rawTitle : `Application Removed from Active Review: ${role}`;
+    heading = 'Application Removed from Active Pool';
+    actionPerformed = 'Candidate profile removed from active review and placed in recently deleted';
     badge = {
-      text: 'ARCHIVED',
-      bg: 'rgba(100, 116, 139, 0.15)',
-      color: '#64748b',
-      icon: 'bi-folder-x',
-      badgeClass: 'badge-neutral',
+      text: 'RECENTLY DELETED',
+      bg: 'rgba(239, 68, 68, 0.14)',
+      color: '#ef4444',
+      icon: 'bi-trash3-fill',
+      badgeClass: 'badge-danger',
     };
+    if (!message || message.includes('archived by HR Recruiter') || message.includes('Application Archival')) {
+      message = `Hello ${candName}, your application for '${role}' has been removed from active recruitment review by the HR team and placed in recently deleted. If you have questions regarding this update, please contact recruitment support.`;
+    }
   }
 
   // 13. Job Posting

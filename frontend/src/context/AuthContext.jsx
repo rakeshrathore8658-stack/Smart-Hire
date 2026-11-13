@@ -146,7 +146,7 @@ export const AuthProvider = ({ children }) => {
       setUser(u);
       saveUserSession(u, token);
       try {
-        sessionStorage.setItem('smarthire_first_login', 'true');
+        sessionStorage.removeItem('smarthire_first_login');
       } catch (_) {}
       if (u.themePreference) {
         setTheme(u.themePreference, false);
@@ -182,7 +182,11 @@ export const AuthProvider = ({ children }) => {
       setUser(u);
       saveUserSession(u, token);
       try {
-        sessionStorage.setItem('smarthire_first_login', 'true');
+        if (response.data.isNewUser) {
+          sessionStorage.setItem('smarthire_first_login', 'true');
+        } else {
+          sessionStorage.removeItem('smarthire_first_login');
+        }
       } catch (_) {}
       if (u.themePreference) {
         setTheme(u.themePreference, false);

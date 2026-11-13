@@ -532,27 +532,27 @@ public class AnalysisController {
                 }
 
                 if (candidateTargetEmail != null && !candidateTargetEmail.isBlank()) {
-                    String dynamicMsg = "Your resume application for '" + role + "' has been removed from candidate review by HR Recruiter " + hrName + ".";
+                    String dynamicMsg = "Hello " + candName + ", your application for '" + role + "' has been removed from active recruitment review by HR Recruiter " + hrName + " and placed in recently deleted. If you have questions regarding your application, please reach out to our recruitment team.";
                     try {
                         notificationService.sendEnrichedNotification(
                                 candidateTargetEmail,
                                 candName,
-                                "Application Removed by HR (" + hrName + ")",
+                                "Application Removed from Active Review: " + role,
                                 dynamicMsg,
                                 "APPLICATION",
                                 "/dashboard/history",
                                 id,
                                 "RESUME_ANALYSIS",
                                 role,
-                                "DELETE",
+                                "APPLICATION_REMOVED",
                                 analysis.getStage() != null ? analysis.getStage() : "Under Review",
-                                "REMOVED",
+                                "RECENTLY_DELETED",
                                 hrName,
                                 null,
                                 null,
                                 null,
                                 null,
-                                "Application profile removed by " + hrName
+                                "Application profile moved to recently deleted by " + hrName
                         );
                         log.info("Dispatched candidate notification for resume deletion by HR [{}]: candidate=[{}]", hrName, candidateTargetEmail);
                     } catch (Exception notifEx) {
@@ -560,7 +560,7 @@ public class AnalysisController {
                     }
                 }
 
-                log.info("Archiving ResumeAnalysis record [id={}] for [{}] - [{}] by HR [{}]", id, candName, role, hrName);
+                log.info("Moving ResumeAnalysis record [id={}] for [{}] - [{}] to Recently Deleted by HR [{}]", id, candName, role, hrName);
                 analysis.setIsArchived(true);
                 analysis.setArchivedAt(java.time.LocalDateTime.now());
                 analysis.setStage("Archived");
@@ -580,7 +580,7 @@ public class AnalysisController {
                 return ResponseEntity.ok(Map.of(
                         "success", true,
                         "archived", true,
-                        "message", "Candidate '" + candName + "' successfully moved to Archived Candidates."
+                        "message", "Candidate '" + candName + "' successfully moved to Recently Deleted."
                 ));
             } else {
                 log.info("Hiding ResumeAnalysis record [id={}] from jobseeker history for [{}]", id, candName);

@@ -345,12 +345,12 @@ public class DashboardApiController {
                 }
 
                 if (candidateTargetEmail != null && !candidateTargetEmail.isBlank()) {
-                    String dynamicMsg = "Hello " + candName + ", your resume application for '" + role + "' has been archived by HR Recruiter " + hrName + " (" + companyName + "). If you have questions, please reach out to our recruitment support.";
+                    String dynamicMsg = "Hello " + candName + ", your application for '" + role + "' has been removed from active recruitment review by HR Recruiter " + hrName + " (" + companyName + ") and placed in recently deleted. If you have questions regarding your application, please reach out to our recruitment team.";
                     try {
                         notificationService.sendEnrichedNotification(
                                 candidateTargetEmail,
                                 candName,
-                                "Application Archival Notice: " + role,
+                                "Application Removed from Active Review: " + role,
                                 dynamicMsg,
                                 "APPLICATION",
                                 "/dashboard/history",
@@ -359,10 +359,10 @@ public class DashboardApiController {
                                 role,
                                 "APPLICATION_REMOVED",
                                 analysis.getStage() != null ? analysis.getStage() : "Under Review",
-                                "ARCHIVED",
+                                "RECENTLY_DELETED",
                                 hrName,
                                 null, null, null, null,
-                                "Application profile removed by " + hrName
+                                "Application profile moved to recently deleted by " + hrName
                         );
                         log.info("Dispatched candidate notification for resume deletion by HR [{}]: candidate=[{}]", hrName, candidateTargetEmail);
                     } catch (Exception notifEx) {
@@ -370,7 +370,7 @@ public class DashboardApiController {
                     }
                 }
 
-                log.info("Archiving ResumeAnalysis record [id={}] for candidate [{}] and role [{}] by HR [{}]", id, candName, role, hrName);
+                log.info("Moving ResumeAnalysis record [id={}] for candidate [{}] and role [{}] to Recently Deleted by HR [{}]", id, candName, role, hrName);
                 analysis.setIsArchived(true);
                 analysis.setArchivedAt(LocalDateTime.now());
                 analysis.setStage("Archived");
@@ -388,7 +388,7 @@ public class DashboardApiController {
                 return ResponseEntity.ok(Map.of(
                         "success", true,
                         "archived", true,
-                        "message", "Candidate '" + candName + "' successfully moved to Archived Candidates."
+                        "message", "Candidate '" + candName + "' successfully moved to Recently Deleted."
                 ));
             } else {
                 // Job seeker deleting from their own personal history
@@ -468,7 +468,7 @@ public class DashboardApiController {
         return ResponseEntity.ok(list.stream().map(this::mapAnalysis).toList());
     }
 
-    @GetMapping("/candidates/archived")
+    @GetMapping({"/candidates/archived", "/candidates/recently-deleted"})
     public ResponseEntity<?> getArchivedCandidates() {
         List<ResumeAnalysis> list = resumeAnalysisRepository.findArchivedCandidates();
         return ResponseEntity.ok(list.stream().map(this::mapAnalysis).toList());
@@ -509,7 +509,7 @@ public class DashboardApiController {
         ));
     }
 
-    @DeleteMapping(value = {"/candidates/{id:[0-9]+}/permanent", "/candidates/archived/{id:[0-9]+}"})
+    @DeleteMapping(value = {"/candidates/{id:[0-9]+}/permanent", "/candidates/archived/{id:[0-9]+}", "/candidates/recently-deleted/{id:[0-9]+}"})
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> permanentlyDeleteArchivedCandidate(@PathVariable("id") Long id) {
         return deleteAnalysisRecord(id, true);

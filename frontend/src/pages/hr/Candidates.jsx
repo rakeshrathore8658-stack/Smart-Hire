@@ -277,8 +277,8 @@ const Candidates = () => {
               ></span>
             )}
           </button>
-          <Link className="btn btn-secondary" to="/dashboard/candidates/archived" id="btnArchivedCandidates" title="View recently deleted and archived candidates">
-            <i className="bi bi-archive"></i> Recently Deleted / Archived
+          <Link className="btn btn-secondary" to="/dashboard/candidates/recently-deleted" id="btnRecentlyDeletedCandidates" title="View recently deleted candidates">
+            <i className="bi bi-trash3"></i> Recently Deleted
           </Link>
           <Link className="btn btn-primary" to="/dashboard/shortlist">
             <i className="bi bi-star"></i> Shortlisted ({shortlistedCount})
