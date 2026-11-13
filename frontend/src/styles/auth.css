@@ -245,6 +245,60 @@ html[data-theme="dark"] .role-option-card.selected {
     transition: border-color var(--transition-fast), background var(--transition-fast);
 }
 
+select.form-select {
+    appearance: none;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    cursor: pointer;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ff7900' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='m2 5 6 6 6-6'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 14px center;
+    background-size: 14px 10px;
+    padding-right: 38px;
+}
+
+select.form-select:hover {
+    border-color: var(--accent);
+}
+
+select.form-select option,
+select.form-select optgroup {
+    background-color: var(--bg-card, #1e293b);
+    color: var(--text-primary, #f8fafc);
+    padding: 10px 14px;
+}
+
+select.form-select optgroup {
+    font-weight: 700;
+    color: var(--accent);
+    padding-top: 8px;
+}
+
+/* Auth Custom Select component styling */
+.register-box .custom-select-container .custom-select-trigger {
+    background: var(--bg-input);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    padding: 11px 14px;
+    font-size: 0.88rem;
+    color: var(--text-primary);
+    min-height: 44px;
+}
+
+.register-box .custom-select-container .custom-select-trigger:focus,
+.register-box .custom-select-container.is-open .custom-select-trigger {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px rgba(255, 121, 0, 0.15);
+}
+
+.register-box .custom-select-dropdown {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.25);
+    border-radius: var(--radius-md);
+    z-index: 1000;
+}
+
 .form-control:focus,
 .form-select:focus {
     border-color: var(--accent);

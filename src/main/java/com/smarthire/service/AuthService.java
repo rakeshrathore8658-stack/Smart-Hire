@@ -20,10 +20,45 @@ public class AuthService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.smarthire.repository.ResumeRepository resumeRepository;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.smarthire.repository.ResumeAnalysisRepository resumeAnalysisRepository;
+
     @org.springframework.beans.factory.annotation.Autowired
     public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+    }
+
+    /**
+     * Link previously bulk-uploaded candidate resumes to a newly registered/signed-in Job Seeker.
+     */
+    public void linkExistingCandidateResumes(User user) {
+        if (user == null || user.getEmail() == null || resumeRepository == null || resumeAnalysisRepository == null) return;
+        String email = user.getEmail().trim().toLowerCase();
+
+        try {
+            var resumes = resumeRepository.findByCandidateEmailNormalizedOrderByCreatedAtDesc(email);
+            for (var r : resumes) {
+                if (r.getUser() == null || (r.getUser().getRole() != null && "HR".equalsIgnoreCase(r.getUser().getRole()))) {
+                    r.setUser(user);
+                    resumeRepository.save(r);
+                }
+            }
+
+            var analyses = resumeAnalysisRepository.findByCandidateEmailNormalized(email);
+            for (var ra : analyses) {
+                if (ra.getUser() == null || (ra.getUser().getRole() != null && "HR".equalsIgnoreCase(ra.getUser().getRole()))) {
+                    ra.setUser(user);
+                    resumeAnalysisRepository.save(ra);
+                }
+            }
+            log.info("Linked existing candidate records to Job Seeker [{}]: {} analyses", email, analyses.size());
+        } catch (Exception ex) {
+            log.warn("Could not link existing candidate records for [{}]: {}", email, ex.getMessage());
+        }
     }
 
     /**
@@ -65,7 +100,11 @@ public class AuthService {
         user.setTourSeen(false);
         user.setTourLastStep(0);
 
-        return userRepository.save(user);
+        User saved = userRepository.save(user);
+        if ("USER".equalsIgnoreCase(saved.getRole())) {
+            linkExistingCandidateResumes(saved);
+        }
+        return saved;
     }
 
     /**
@@ -196,16 +235,22 @@ public class AuthService {
         newUser.setNotifInterviewUpdates(true);
         newUser.setCreatedAt(java.time.LocalDateTime.now());
 
+        User savedNewUser;
         try {
-            return userRepository.save(newUser);
+            savedNewUser = userRepository.save(newUser);
         } catch (Exception ex) {
             log.warn("Notice: Failed to persist new user with avatar, retrying safely without avatar: {}", ex.getMessage());
             if (newUser.getAvatarUrl() != null) {
                 newUser.setAvatarUrl(null);
-                return userRepository.save(newUser);
+                savedNewUser = userRepository.save(newUser);
+            } else {
+                throw ex;
             }
-            throw ex;
         }
+        if ("USER".equalsIgnoreCase(savedNewUser.getRole())) {
+            linkExistingCandidateResumes(savedNewUser);
+        }
+        return savedNewUser;
     }
 
     private String sanitizeAvatarUrl(String url) {

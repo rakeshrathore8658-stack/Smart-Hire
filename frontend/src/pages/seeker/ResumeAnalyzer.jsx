@@ -4,9 +4,20 @@ import api from '../../api/client';
 import AnalysisResult from '../../components/common/AnalysisResult';
 import CustomSelect from '../../components/common/CustomSelect';
 import { useAuth } from '../../context/AuthContext';
+import { useBulkScan } from '../../context/BulkScanContext';
 
 const ResumeAnalyzer = () => {
   const { user } = useAuth();
+  const {
+    isSeekerAnalyzing,
+    seekerMinimized,
+    seekerProgress,
+    seekerAnalysisResult,
+    seekerError,
+    startSeekerAnalysis,
+    minimizeSeekerAnalysis,
+    restoreSeekerAnalysis,
+  } = useBulkScan();
   const [searchParams] = useSearchParams();
   const analysisId = searchParams.get('id');
   const roleParam = searchParams.get('role');
@@ -193,6 +204,29 @@ const ResumeAnalyzer = () => {
     }
   };
 
+  // Sync background analysis results from context
+  useEffect(() => {
+    if (seekerAnalysisResult) {
+      setAnalysis(seekerAnalysisResult);
+      setShowUploadForm(false);
+      if (seekerAnalysisResult.fallbackUsed) {
+        setSuccessMessage(
+          `Analysis completed using ${seekerAnalysisResult.aiProvider}. (Note: ${seekerAnalysisResult.fallbackReason || 'Defaulted to local engine'})`
+        );
+      } else {
+        setSuccessMessage(
+          `Resume successfully analyzed with ${seekerAnalysisResult.aiProvider || 'AI'}${seekerAnalysisResult.modelUsed ? ' (' + seekerAnalysisResult.modelUsed + ')' : ''}!`
+        );
+      }
+    }
+  }, [seekerAnalysisResult]);
+
+  useEffect(() => {
+    if (seekerError) {
+      setErrorMessage(`Analysis Failed: ${seekerError}`);
+    }
+  }, [seekerError]);
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
@@ -208,8 +242,6 @@ const ResumeAnalyzer = () => {
       setErrorMessage('Please specify your target job role.');
       return;
     }
-
-    setLoading(true);
 
     try {
       const activeEmail = user?.email
@@ -227,15 +259,16 @@ const ResumeAnalyzer = () => {
       if (selectedModel) formData.append('model', selectedModel);
       if (activeEmail) formData.append('email', activeEmail);
 
-      const res = await api.post('/analysis/analyze', formData, {
-        headers: {
-          'Content-Type': 'multipart/form-data',
-          ...(activeEmail ? { 'X-User-Email': activeEmail } : {}),
-        },
+      const effectiveEngineName = `${currentProvider?.name || 'Local AI Engine'}${selectedModel && selectedModel !== 'auto' ? ` (${selectedModel})` : ''}`;
+
+      const result = await startSeekerAnalysis({
+        formData,
+        fileName: file?.name || 'Selected Resume Document',
+        targetRole: effectiveRole,
+        engineName: effectiveEngineName,
       });
 
-      if (res.data && (res.data.analysis || res.data.id)) {
-        const result = res.data.analysis || res.data;
+      if (result) {
         setAnalysis(result);
         setShowUploadForm(false);
         if (result.fallbackUsed) {
@@ -247,8 +280,6 @@ const ResumeAnalyzer = () => {
             `Resume successfully analyzed with ${result.aiProvider || 'AI'}${result.modelUsed ? ' (' + result.modelUsed + ')' : ''}!`
           );
         }
-      } else {
-        throw new Error('Analysis response was empty from backend.');
       }
     } catch (err) {
       const errorMsg =
@@ -257,8 +288,6 @@ const ResumeAnalyzer = () => {
         err.message ||
         'Resume analysis encountered an error. Please try again.';
       setErrorMessage(`Analysis Failed: ${errorMsg}`);
-    } finally {
-      setLoading(false);
     }
   };
 
@@ -334,8 +363,10 @@ const ResumeAnalyzer = () => {
       : `${(file.size / 1024).toFixed(1)} KB`
     : '';
 
+  const isEvaluating = isSeekerAnalyzing && !seekerMinimized;
+
   // High-Tech Dedicated Scanning View during processing
-  if (loading) {
+  if (isEvaluating) {
     return (
       <div style={{ maxWidth: '900px', margin: '24px auto', padding: '10px 16px' }}>
         <style>{`
@@ -359,11 +390,34 @@ const ResumeAnalyzer = () => {
           }
         `}</style>
 
-        <nav className="breadcrumb" style={{ marginBottom: '24px' }}>
-          <Link to="/dashboard">Dashboard</Link>
-          <span className="breadcrumb-separator">/</span>
-          <span className="breadcrumb-current">AI Evaluation in Progress</span>
-        </nav>
+        {/* Top Header Row with Breadcrumbs & Minimize Button */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <nav className="breadcrumb" style={{ margin: 0 }}>
+            <Link to="/dashboard">Dashboard</Link>
+            <span className="breadcrumb-separator">/</span>
+            <span className="breadcrumb-current">AI Evaluation in Progress</span>
+          </nav>
+
+          <button
+            type="button"
+            onClick={minimizeSeekerAnalysis}
+            className="btn btn-secondary btn-sm"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              borderRadius: '20px',
+              padding: '6px 14px',
+              fontWeight: 600,
+              fontSize: '0.82rem',
+              cursor: 'pointer',
+              boxShadow: '0 2px 6px rgba(0,0,0,0.1)',
+            }}
+            title="Minimize to floating widget and continue working"
+          >
+            <i className="bi bi-dash-lg"></i> Minimize
+          </button>
+        </div>
 
         <div
           className="card"
@@ -374,8 +428,28 @@ const ResumeAnalyzer = () => {
             border: '1px solid var(--border-color)',
             boxShadow: '0 12px 40px rgba(0, 0, 0, 0.12)',
             textAlign: 'center',
+            position: 'relative',
           }}
         >
+          {/* Top Right Minimize Icon inside Card as well */}
+          <div style={{ position: 'absolute', top: '16px', right: '16px' }}>
+            <button
+              type="button"
+              onClick={minimizeSeekerAnalysis}
+              className="btn btn-ghost btn-sm"
+              style={{
+                borderRadius: '8px',
+                padding: '4px 10px',
+                fontSize: '0.8rem',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+              }}
+              title="Minimize to floating widget"
+            >
+              <i className="bi bi-dash-lg"></i> Minimize
+            </button>
+          </div>
+
           {/* Animated Scanner Preview */}
           <div
             style={{
@@ -442,21 +516,21 @@ const ResumeAnalyzer = () => {
           </div>
 
           <h2 style={{ fontSize: '1.45rem', fontWeight: 800, margin: '0 0 8px', color: 'var(--text-primary)' }}>
-            Processing: {file?.name || 'Selected Resume Document'}
+            Processing: {seekerProgress.fileName || file?.name || 'Selected Resume Document'}
           </h2>
           <p style={{ fontSize: '0.92rem', color: 'var(--text-secondary)', margin: '0 auto 28px', maxWidth: '600px' }}>
-            Target Career Profile: <strong style={{ color: 'var(--text-primary)' }}>{targetRole}</strong> • Evaluation Engine:{' '}
+            Target Career Profile: <strong style={{ color: 'var(--text-primary)' }}>{seekerProgress.targetRole || targetRole}</strong> • Evaluation Engine:{' '}
             <strong style={{ color: 'var(--accent)' }}>
-              {currentProvider?.name || 'Local AI Engine'}{selectedModel && selectedModel !== 'auto' ? ` (${selectedModel})` : ''}
+              {seekerProgress.engineName || currentProvider?.name || 'Local AI Engine'}
             </strong>
           </p>
 
-          {/* Animated Striped Progress Bar */}
+          {/* Animated Striped Progress Bar with Dynamic Percentage */}
           <div
             style={{
               width: '100%',
               maxWidth: '680px',
-              margin: '0 auto 28px',
+              margin: '0 auto 10px',
               height: '12px',
               background: 'var(--border-color)',
               borderRadius: '6px',
@@ -465,14 +539,19 @@ const ResumeAnalyzer = () => {
           >
             <div
               style={{
-                width: '100%',
+                width: `${seekerProgress.percentage || 25}%`,
                 height: '100%',
                 background:
                   'linear-gradient(45deg, rgba(255,255,255,0.2) 25%, transparent 25%, transparent 50%, rgba(255,255,255,0.2) 50%, rgba(255,255,255,0.2) 75%, transparent 75%, transparent), linear-gradient(90deg, #ff7900 0%, #10b981 100%)',
                 backgroundSize: '28px 28px, 100% 100%',
                 animation: 'progressStripes 1s linear infinite',
+                transition: 'width 0.4s ease',
               }}
             ></div>
+          </div>
+          <div style={{ maxWidth: '680px', margin: '0 auto 24px', display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'var(--text-secondary)' }}>
+            <span>Stage: <strong style={{ color: 'var(--accent)' }}>{seekerProgress.stepName || 'Evaluating...'}</strong></span>
+            <strong style={{ color: 'var(--text-primary)' }}>{seekerProgress.percentage || 25}% Completed</strong>
           </div>
 
           {/* Multi-Stage Pipeline Stages */}
@@ -482,7 +561,7 @@ const ResumeAnalyzer = () => {
               gridTemplateColumns: 'repeat(4, 1fr)',
               gap: '12px',
               maxWidth: '680px',
-              margin: '0 auto',
+              margin: '0 auto 24px',
               padding: '16px',
               background: 'var(--bg-secondary)',
               borderRadius: 'var(--radius-md)',
@@ -490,22 +569,42 @@ const ResumeAnalyzer = () => {
               textAlign: 'center',
             }}
           >
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', animation: 'pipelineStepPulse 2.5s infinite' }}>
+            <div style={{ fontSize: '0.78rem', color: (seekerProgress.step || 1) >= 1 ? 'var(--accent)' : 'var(--text-secondary)', fontWeight: (seekerProgress.step || 1) === 1 ? 700 : 500 }}>
               <i className="bi bi-file-earmark-text text-primary" style={{ display: 'block', fontSize: '1.4rem', marginBottom: '4px' }}></i>
               <strong>1. OCR &amp; Text</strong>
             </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', animation: 'pipelineStepPulse 2.5s infinite' }}>
+            <div style={{ fontSize: '0.78rem', color: (seekerProgress.step || 1) >= 2 ? 'var(--accent)' : 'var(--text-secondary)', fontWeight: (seekerProgress.step || 1) === 2 ? 700 : 500 }}>
               <i className="bi bi-code-slash text-warning" style={{ display: 'block', fontSize: '1.4rem', marginBottom: '4px' }}></i>
               <strong>2. Skills &amp; Gaps</strong>
             </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', animation: 'pipelineStepPulse 2.5s infinite' }}>
+            <div style={{ fontSize: '0.78rem', color: (seekerProgress.step || 1) >= 3 ? 'var(--accent)' : 'var(--text-secondary)', fontWeight: (seekerProgress.step || 1) === 3 ? 700 : 500 }}>
               <i className="bi bi-cpu-fill text-accent" style={{ display: 'block', fontSize: '1.4rem', marginBottom: '4px' }}></i>
               <strong>3. Deep Evaluation</strong>
             </div>
-            <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)', animation: 'pipelineStepPulse 2.5s infinite' }}>
+            <div style={{ fontSize: '0.78rem', color: (seekerProgress.step || 1) >= 4 ? '#10b981' : 'var(--text-secondary)', fontWeight: (seekerProgress.step || 1) === 4 ? 700 : 500 }}>
               <i className="bi bi-database-fill-check text-success" style={{ display: 'block', fontSize: '1.4rem', marginBottom: '4px' }}></i>
               <strong>4. Synthesis &amp; Save</strong>
             </div>
+          </div>
+
+          {/* Minimize button inside card */}
+          <div>
+            <button
+              type="button"
+              onClick={minimizeSeekerAnalysis}
+              className="btn btn-outline-secondary btn-sm"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '8px',
+                borderRadius: '24px',
+                padding: '8px 20px',
+                fontSize: '0.84rem',
+                cursor: 'pointer',
+              }}
+            >
+              <i className="bi bi-window-stack"></i> Minimize to Background (Work while AI scans)
+            </button>
           </div>
         </div>
       </div>
@@ -514,6 +613,53 @@ const ResumeAnalyzer = () => {
 
   return (
     <div>
+      {/* Background Analysis Active Banner */}
+      {isSeekerAnalyzing && seekerMinimized && (
+        <div
+          className="alert"
+          style={{
+            marginBottom: '20px',
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            padding: '12px 18px',
+            borderRadius: '12px',
+            border: '1.5px solid var(--accent)',
+            background: 'var(--bg-card)',
+            boxShadow: '0 4px 14px rgba(255, 121, 0, 0.12)',
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <span
+              style={{
+                width: '10px',
+                height: '10px',
+                borderRadius: '50%',
+                background: '#ff7900',
+                display: 'inline-block',
+                boxShadow: '0 0 8px #ff7900',
+                animation: 'pulse 1s infinite',
+              }}
+            ></span>
+            <div>
+              <strong style={{ display: 'block', fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                AI Resume Evaluation Running in Background
+              </strong>
+              <small style={{ color: 'var(--text-secondary)', fontSize: '0.78rem' }}>
+                Analyzing <strong>{seekerProgress.fileName}</strong> • Stage: {seekerProgress.stepName} ({seekerProgress.percentage}%)
+              </small>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn btn-primary btn-sm"
+            onClick={restoreSeekerAnalysis}
+            style={{ borderRadius: '20px', padding: '6px 14px', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '6px' }}
+          >
+            <i className="bi bi-arrows-angle-expand"></i> Expand Live View
+          </button>
+        </div>
+      )}
       {/* Breadcrumb Navigation */}
       <nav className="breadcrumb" style={{ marginBottom: '20px' }}>
         <Link to="/dashboard">Dashboard</Link>

@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import api from '../../api/client';
+import CustomSelect from '../../components/common/CustomSelect';
 
 const Register = () => {
   const [searchParams] = useSearchParams();
@@ -47,6 +48,33 @@ const Register = () => {
   }, [roleParam]);
 
   const isHr = role === 'HR';
+
+  const roleSelectOptions = useMemo(() => [
+    ...(dbJobs.length > 0
+      ? [
+          { isHeader: true, label: 'Available Vacancies (Database)' },
+          ...dbJobs.map((j) => ({
+            value: j.title,
+            label: `${j.title} (${j.department || 'Tech'})`,
+            badge: 'Open Vacancy',
+          })),
+        ]
+      : []),
+    { isHeader: true, label: 'General Career Profiles' },
+    { value: 'Java Developer', label: 'Java Developer' },
+    { value: 'Spring Boot Developer', label: 'Spring Boot Developer' },
+    { value: 'Full Stack Developer', label: 'Full Stack MERN Developer' },
+    { value: 'DevOps Engineer', label: 'DevOps & Cloud Engineer' },
+    { value: 'Data Analyst', label: 'Data Analyst / Scientist' },
+    { value: 'Other', label: 'Other Profile' },
+  ], [dbJobs]);
+
+  const departmentOptions = [
+    { value: 'Engineering', label: 'Engineering / IT' },
+    { value: 'Product', label: 'Product & Design' },
+    { value: 'Talent Acquisition', label: 'Talent Acquisition / HR' },
+    { value: 'Executive', label: 'Executive Leadership' },
+  ];
 
   const handleRoleSelect = (selected) => {
     setRole(selected);
@@ -465,31 +493,14 @@ const Register = () => {
                 <label className="form-label" htmlFor="careerRole">
                   Primary Target Career Role
                 </label>
-                <select
+                <CustomSelect
                   id="careerRole"
-                  name="careerRole"
-                  className="form-select"
                   value={careerRole}
-                  onChange={(e) => setCareerRole(e.target.value)}
-                >
-                  {dbJobs.length > 0 && (
-                    <optgroup label="Available Vacancies (Database)">
-                      {dbJobs.map((j) => (
-                        <option key={j.id} value={j.title}>
-                          {j.title} ({j.department})
-                        </option>
-                      ))}
-                    </optgroup>
-                  )}
-                  <optgroup label="General Career Profiles">
-                    <option value="Java Developer">Java Developer</option>
-                    <option value="Spring Boot Developer">Spring Boot Developer</option>
-                    <option value="Full Stack Developer">Full Stack MERN Developer</option>
-                    <option value="DevOps Engineer">DevOps &amp; Cloud Engineer</option>
-                    <option value="Data Analyst">Data Analyst / Scientist</option>
-                    <option value="Other">Other Profile</option>
-                  </optgroup>
-                </select>
+                  onChange={(val) => setCareerRole(val)}
+                  options={roleSelectOptions}
+                  placeholder="Select Target Career Role"
+                  searchable={true}
+                />
               </div>
             ) : (
               <div id="hrFields">
@@ -512,18 +523,13 @@ const Register = () => {
                   <label className="form-label" htmlFor="department">
                     Hiring Department
                   </label>
-                  <select
+                  <CustomSelect
                     id="department"
-                    name="department"
-                    className="form-select"
                     value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                  >
-                    <option value="Engineering">Engineering / IT</option>
-                    <option value="Product">Product &amp; Design</option>
-                    <option value="Talent Acquisition">Talent Acquisition / HR</option>
-                    <option value="Executive">Executive Leadership</option>
-                  </select>
+                    onChange={(val) => setDepartment(val)}
+                    options={departmentOptions}
+                    placeholder="Select Hiring Department"
+                  />
                 </div>
               </div>
             )}

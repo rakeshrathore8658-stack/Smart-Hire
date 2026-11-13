@@ -4,8 +4,10 @@ import { BrowserRouter } from 'react-router-dom'
 import { ThemeProvider } from './context/ThemeContext'
 import { AuthProvider } from './context/AuthContext'
 import { NotificationProvider } from './context/NotificationContext'
+import { BulkScanProvider } from './context/BulkScanContext'
 import { OnboardingProvider } from './context/OnboardingContext'
 import App from './App.jsx'
+import FloatingBulkScanWidget from './components/common/FloatingBulkScanWidget'
 
 // Application Stylesheets
 import './styles/bootstrap-icons.min.css'
@@ -24,9 +26,12 @@ createRoot(document.getElementById('root')).render(
       <ThemeProvider>
         <AuthProvider>
           <NotificationProvider>
-            <OnboardingProvider>
-              <App />
-            </OnboardingProvider>
+            <BulkScanProvider>
+              <OnboardingProvider>
+                <App />
+                <FloatingBulkScanWidget />
+              </OnboardingProvider>
+            </BulkScanProvider>
           </NotificationProvider>
         </AuthProvider>
       </ThemeProvider>

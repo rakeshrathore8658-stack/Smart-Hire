@@ -44,21 +44,41 @@ public interface ResumeAnalysisRepository extends JpaRepository<ResumeAnalysis, 
     List<ResumeAnalysis> findByUserIdOrderByCreatedAtDesc(Long userId);
 
     @org.springframework.data.jpa.repository.Query("SELECT ra FROM ResumeAnalysis ra " +
-            "WHERE (:userId IS NOT NULL AND ((ra.user IS NOT NULL AND ra.user.id = :userId) " +
-            "   OR (ra.resume IS NOT NULL AND ra.resume.user IS NOT NULL AND ra.resume.user.id = :userId))) " +
-            "   OR (:email IS NOT NULL AND :email <> '' AND (LOWER(ra.candidateEmailNormalized) = LOWER(:email) " +
-            "       OR LOWER(ra.candidateEmail) = LOWER(:email))) " +
+            "WHERE (ra.deletedByJobseeker IS NULL OR ra.deletedByJobseeker = false) " +
+            "  AND (" +
+            "       (:email IS NOT NULL AND :email <> '' AND (LOWER(ra.candidateEmailNormalized) = LOWER(:email) OR LOWER(ra.candidateEmail) = LOWER(:email))) " +
+            "       OR (:userId IS NOT NULL AND ra.user IS NOT NULL AND ra.user.id = :userId AND (ra.candidateEmail IS NULL OR ra.candidateEmail = '' OR LOWER(ra.candidateEmail) = LOWER(:email))) " +
+            "      ) " +
             "ORDER BY ra.createdAt DESC")
     List<ResumeAnalysis> findAllForUser(@org.springframework.data.repository.query.Param("userId") Long userId,
                                         @org.springframework.data.repository.query.Param("email") String email);
 
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(ra) FROM ResumeAnalysis ra " +
-            "WHERE (:userId IS NOT NULL AND ((ra.user IS NOT NULL AND ra.user.id = :userId) " +
-            "   OR (ra.resume IS NOT NULL AND ra.resume.user IS NOT NULL AND ra.resume.user.id = :userId))) " +
-            "   OR (:email IS NOT NULL AND :email <> '' AND (LOWER(ra.candidateEmailNormalized) = LOWER(:email) " +
-            "       OR LOWER(ra.candidateEmail) = LOWER(:email)))")
+            "WHERE (ra.deletedByJobseeker IS NULL OR ra.deletedByJobseeker = false) " +
+            "  AND (" +
+            "       (:email IS NOT NULL AND :email <> '' AND (LOWER(ra.candidateEmailNormalized) = LOWER(:email) OR LOWER(ra.candidateEmail) = LOWER(:email))) " +
+            "       OR (:userId IS NOT NULL AND ra.user IS NOT NULL AND ra.user.id = :userId AND (ra.candidateEmail IS NULL OR ra.candidateEmail = '' OR LOWER(ra.candidateEmail) = LOWER(:email))) " +
+            "      )")
     long countForUser(@org.springframework.data.repository.query.Param("userId") Long userId,
                       @org.springframework.data.repository.query.Param("email") String email);
+
+    @org.springframework.data.jpa.repository.Query("SELECT ra FROM ResumeAnalysis ra " +
+            "WHERE ra.isArchived = true OR LOWER(ra.stage) = 'archived' " +
+            "ORDER BY COALESCE(ra.archivedAt, ra.updatedAt, ra.createdAt) DESC")
+    List<ResumeAnalysis> findArchivedCandidates();
+
+    @org.springframework.data.jpa.repository.Query("SELECT ra FROM ResumeAnalysis ra " +
+            "WHERE (ra.isArchived IS NULL OR ra.isArchived = false) AND (ra.stage IS NULL OR LOWER(ra.stage) <> 'archived') " +
+            "ORDER BY ra.createdAt DESC")
+    List<ResumeAnalysis> findActiveCandidates();
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(ra) FROM ResumeAnalysis ra " +
+            "WHERE ra.isArchived = true OR LOWER(ra.stage) = 'archived'")
+    long countArchivedCandidates();
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(ra) FROM ResumeAnalysis ra " +
+            "WHERE (ra.isArchived IS NULL OR ra.isArchived = false) AND (ra.stage IS NULL OR LOWER(ra.stage) <> 'archived')")
+    long countActiveCandidates();
 
     @org.springframework.data.jpa.repository.Modifying
     @org.springframework.data.jpa.repository.Query("DELETE FROM ResumeAnalysis ra WHERE ra.resume.id = :resumeId")

@@ -207,6 +207,16 @@ const Sidebar = ({ isMobileOpen, isCollapsed, toggleSidebar, closeSidebar, close
               </NavLink>
 
               <NavLink
+                to="/dashboard/candidates/archived"
+                className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
+                onClick={closeMobileOnly}
+                title="Archived &amp; Recently Deleted Candidates"
+              >
+                <span className="sidebar-icon" aria-hidden="true"><i className="bi bi-archive"></i></span>
+                <span className="sidebar-link-text">Archived Pool</span>
+              </NavLink>
+
+              <NavLink
                 to="/dashboard/interviews"
                 className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
                 onClick={closeMobileOnly}

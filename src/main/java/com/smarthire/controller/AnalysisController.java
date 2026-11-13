@@ -515,11 +515,11 @@ public class AnalysisController {
 
             // If an HR / Recruiter deletes a candidate's resume, notify the candidate with dynamic message and HR name
             boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
-            if (isHr) {
-                String hrName = (currentUser.getFullName() != null && !currentUser.getFullName().isBlank())
-                        ? currentUser.getFullName()
-                        : "HR Recruiter";
+            String hrName = (currentUser != null && currentUser.getFullName() != null && !currentUser.getFullName().isBlank())
+                    ? currentUser.getFullName()
+                    : "HR Recruiter";
 
+            if (isHr) {
                 String candidateTargetEmail = null;
                 if (analysis.getUser() != null && analysis.getUser().getEmail() != null) {
                     candidateTargetEmail = analysis.getUser().getEmail();
@@ -559,37 +559,45 @@ public class AnalysisController {
                         log.warn("Failed to dispatch deletion notification to candidate: {}", notifEx.getMessage());
                     }
                 }
-            }
 
-            log.info("Deleting ResumeAnalysis record [id={}] for [{}] - [{}]", id, candName, role);
+                log.info("Archiving ResumeAnalysis record [id={}] for [{}] - [{}] by HR [{}]", id, candName, role, hrName);
+                analysis.setIsArchived(true);
+                analysis.setArchivedAt(java.time.LocalDateTime.now());
+                analysis.setStage("Archived");
+                resumeAnalysisRepository.save(analysis);
 
-            resumeAnalysisRepository.delete(analysis);
-            resumeAnalysisRepository.flush();
-
-            // Real-time WebSocket sync broadcast
-            try {
-                realtimeSyncService.notifyResumeDeleted(id, candName, role);
-            } catch (Exception wsEx) {
-                log.warn("Failed to dispatch real-time delete sync: {}", wsEx.getMessage());
-            }
-
-            if (resume != null && resume.getId() != null) {
-                long remaining = resumeAnalysisRepository.countByResumeId(resume.getId());
-                if (remaining == 0) {
-                    try {
-                        resumeRepository.delete(resume);
-                        resumeRepository.flush();
-                        log.info("Cascaded delete to parent Resume [id={}]", resume.getId());
-                    } catch (Exception ex) {
-                        log.warn("Could not delete associated resume [id={}]: {}", resume.getId(), ex.getMessage());
-                    }
+                try {
+                    realtimeSyncService.broadcastEvent("CANDIDATE_ARCHIVED", "DELETE", Map.of(
+                            "id", id,
+                            "candidateName", candName,
+                            "targetJobRole", role,
+                            "stage", "Archived"
+                    ));
+                } catch (Exception wsEx) {
+                    log.warn("Failed to dispatch real-time archive sync: {}", wsEx.getMessage());
                 }
-            }
 
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "Resume analysis for '" + candName + "' successfully deleted from database."
-            ));
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "archived", true,
+                        "message", "Candidate '" + candName + "' successfully moved to Archived Candidates."
+                ));
+            } else {
+                log.info("Hiding ResumeAnalysis record [id={}] from jobseeker history for [{}]", id, candName);
+                analysis.setDeletedByJobseeker(true);
+                resumeAnalysisRepository.save(analysis);
+
+                try {
+                    realtimeSyncService.notifyResumeDeleted(id, candName, role);
+                } catch (Exception wsEx) {
+                    log.warn("Failed to dispatch real-time delete sync: {}", wsEx.getMessage());
+                }
+
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "message", "Resume record removed from your personal analysis history."
+                ));
+            }
         }).orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
                 "success", false,
                 "message", "Resume analysis record #" + id + " does not exist in database."

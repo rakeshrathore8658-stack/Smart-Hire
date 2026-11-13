@@ -112,6 +112,9 @@ public class DashboardApiController {
         map.put("stage", ra.getStage() != null ? ra.getStage() : "Under Review");
         map.put("displayStage", ra.getDisplayStage() != null ? ra.getDisplayStage() : (ra.getStage() != null ? ra.getStage() : "Under Review"));
         map.put("status", ra.getStatus());
+        map.put("isArchived", ra.isArchived());
+        map.put("archivedAt", ra.getArchivedAt());
+        map.put("formattedArchivedAt", ra.getArchivedAt() != null ? ra.getArchivedAt().format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a")) : null);
         map.put("recommendation", ra.getRecommendation());
         map.put("shortlisted", Boolean.TRUE.equals(ra.getShortlisted()) || Boolean.TRUE.equals(ra.isShortlisted()));
         map.put("keySkills", ra.getKeySkills());
@@ -329,37 +332,42 @@ public class DashboardApiController {
                         log.warn("Failed to dispatch deletion notification to candidate: {}", notifEx.getMessage());
                     }
                 }
+
+                log.info("Archiving ResumeAnalysis record [id={}] for candidate [{}] and role [{}] by HR [{}]", id, candName, role, hrName);
+                analysis.setIsArchived(true);
+                analysis.setArchivedAt(LocalDateTime.now());
+                analysis.setStage("Archived");
+                resumeAnalysisRepository.save(analysis);
+
+                try {
+                    realtimeSyncService.broadcastEvent("CANDIDATE_ARCHIVED", "DELETE", Map.of(
+                            "id", id,
+                            "candidateName", candName,
+                            "targetJobRole", role,
+                            "stage", "Archived"
+                    ));
+                } catch (Exception ignored) {}
+
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "archived", true,
+                        "message", "Candidate '" + candName + "' successfully moved to Archived Candidates."
+                ));
+            } else {
+                // Job seeker deleting from their own personal history
+                log.info("Job Seeker hiding resume analysis [id={}] from personal history", id);
+                analysis.setDeletedByJobseeker(true);
+                resumeAnalysisRepository.save(analysis);
+
+                try {
+                    realtimeSyncService.notifyResumeDeleted(id, candName, role);
+                } catch (Exception ignored) {}
+
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "message", "Resume record removed from your analysis history."
+                ));
             }
-
-            log.info("Deleting ResumeAnalysis record [id={}] for candidate [{}] and role [{}]", id, candName, role);
-
-            resumeAnalysisRepository.delete(analysis);
-            resumeAnalysisRepository.flush();
-
-            try {
-                realtimeSyncService.notifyResumeDeleted(id, candName, role);
-            } catch (Exception wsEx) {
-                log.warn("Failed to dispatch real-time delete event: {}", wsEx.getMessage());
-            }
-
-            // If no other analysis references this Resume, also clean up the Resume record
-            if (resume != null && resume.getId() != null) {
-                long remaining = resumeAnalysisRepository.countByResumeId(resume.getId());
-                if (remaining == 0) {
-                    log.info("No remaining analyses for Resume [id={}]. Deleting from resumes table.", resume.getId());
-                    try {
-                        resumeRepository.delete(resume);
-                        resumeRepository.flush();
-                    } catch (Exception ex) {
-                        log.warn("Could not delete associated resume [id={}]: {}", resume.getId(), ex.getMessage());
-                    }
-                }
-            }
-
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "Resume analysis for '" + candName + " (" + role + ")' successfully deleted from database."
-            ));
         }
 
         // Fallback: Check if the ID provided is a Resume ID directly
@@ -401,22 +409,67 @@ public class DashboardApiController {
 
     @GetMapping("/applications")
     public ResponseEntity<?> getApplications(@RequestParam(value = "stage", required = false) String stage) {
-        List<ResumeAnalysis> list = resumeAnalysisRepository.findAllByOrderByCreatedAtDesc();
-
-        if (stage != null && !stage.isBlank() && !"all".equalsIgnoreCase(stage)) {
-            String target = stage.trim().toLowerCase();
-            list = list.stream().filter(ra -> {
-                String s = (ra.getStage() != null ? ra.getStage() : "Under Review").toLowerCase();
-                if ("under_review".equals(target) || "review".equals(target)) return s.contains("review");
-                if ("shortlisted".equals(target)) return ra.isShortlisted() || s.contains("shortlist");
-                if ("interview".equals(target) || "interviewing".equals(target)) return s.contains("interview");
-                if ("offered".equals(target)) return s.contains("offer");
-                if ("hired".equals(target)) return s.contains("hire");
-                return s.equalsIgnoreCase(target);
-            }).toList();
+        List<ResumeAnalysis> list;
+        if ("archived".equalsIgnoreCase(stage)) {
+            list = resumeAnalysisRepository.findArchivedCandidates();
+        } else {
+            list = resumeAnalysisRepository.findActiveCandidates();
+            if (stage != null && !stage.isBlank() && !"all".equalsIgnoreCase(stage)) {
+                String target = stage.trim().toLowerCase();
+                list = list.stream().filter(ra -> {
+                    String s = (ra.getStage() != null ? ra.getStage() : "Under Review").toLowerCase();
+                    if ("under_review".equals(target) || "review".equals(target)) return s.contains("review");
+                    if ("shortlisted".equals(target)) return ra.isShortlisted() || s.contains("shortlist");
+                    if ("interview".equals(target) || "interviewing".equals(target)) return s.contains("interview");
+                    if ("offered".equals(target)) return s.contains("offer");
+                    if ("hired".equals(target)) return s.contains("hire");
+                    return s.equalsIgnoreCase(target);
+                }).toList();
+            }
         }
 
         return ResponseEntity.ok(list.stream().map(this::mapAnalysis).toList());
+    }
+
+    @GetMapping("/candidates/archived")
+    public ResponseEntity<?> getArchivedCandidates() {
+        List<ResumeAnalysis> list = resumeAnalysisRepository.findArchivedCandidates();
+        return ResponseEntity.ok(list.stream().map(this::mapAnalysis).toList());
+    }
+
+    @PostMapping(value = {"/candidates/{id:[0-9]+}/unarchive", "/candidates/{id:[0-9]+}/restore"})
+    @org.springframework.transaction.annotation.Transactional
+    public ResponseEntity<?> unarchiveCandidate(@PathVariable("id") Long id) {
+        Optional<ResumeAnalysis> analysisOpt = resumeAnalysisRepository.findById(id);
+        if (analysisOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "success", false,
+                    "message", "Candidate record not found."
+            ));
+        }
+
+        ResumeAnalysis analysis = analysisOpt.get();
+        analysis.setIsArchived(false);
+        analysis.setArchivedAt(null);
+        analysis.setStage("Under Review");
+        resumeAnalysisRepository.save(analysis);
+
+        String candName = analysis.getCandidateName() != null ? analysis.getCandidateName() : "Candidate";
+        String role = analysis.getTargetJobRole() != null ? analysis.getTargetJobRole() : "Role";
+
+        try {
+            realtimeSyncService.broadcastEvent("CANDIDATE_RESTORED", "UPDATE", Map.of(
+                    "id", id,
+                    "candidateName", candName,
+                    "targetJobRole", role,
+                    "stage", "Under Review"
+            ));
+        } catch (Exception ignored) {}
+
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Candidate '" + candName + "' successfully restored to active Candidate Pool."
+        ));
     }
 
     @PatchMapping("/applications/{id}/stage")
@@ -1081,6 +1134,12 @@ public class DashboardApiController {
             int totalFiles = payload.get("totalFiles") != null ? Integer.parseInt(payload.get("totalFiles").toString()) : 0;
             int successfulCount = payload.get("successfulCount") != null ? Integer.parseInt(payload.get("successfulCount").toString()) : totalFiles;
             String hrEmail = (String) payload.get("hrEmail");
+            if (hrEmail == null || hrEmail.isBlank()) {
+                User authUser = getAuthenticatedUser();
+                if (authUser != null && authUser.getEmail() != null) {
+                    hrEmail = authUser.getEmail();
+                }
+            }
 
             bulkResumeUploadService.notifyHr(hrEmail, null, jobId, jobTitle, totalFiles, successfulCount);
             return ResponseEntity.ok(Map.of("success", true, "message", "HR notified of batch screening completion."));

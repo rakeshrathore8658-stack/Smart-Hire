@@ -7,44 +7,48 @@ import EmptyState from '../../components/common/EmptyState';
 import SkeletonLoader from '../../components/common/SkeletonLoader';
 import { useAuth } from '../../context/AuthContext';
 import { useNotifications } from '../../context/NotificationContext';
+import { useBulkScan } from '../../context/BulkScanContext';
 import useRealtimeSync from '../../hooks/useRealtimeSync';
 
 const Candidates = () => {
   const { user } = useAuth();
   const { fetchNotifications } = useNotifications();
+  const {
+    isScreening,
+    isMinimized,
+    modalOpen,
+    setModalOpen,
+    batchFinished,
+    progress,
+    selectedFiles,
+    setSelectedFiles,
+    associatedJobId,
+    setAssociatedJobId,
+    aiProvider,
+    setAiProvider,
+    aiModel,
+    setAiModel,
+    geminiModel,
+    setGeminiModel,
+    geminiKey,
+    setGeminiKey,
+    duplicateAlert,
+    setDuplicateAlert,
+    startBatchScreening,
+    minimizeScan,
+    restoreScan,
+    resetBatchModal,
+  } = useBulkScan();
 
   const [candidates, setCandidates] = useState([]);
   const [dbJobs, setDbJobs] = useState([]);
-  const [associatedJobId, setAssociatedJobId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedScore, setSelectedScore] = useState('');
   const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
   const [actionSuccess, setActionSuccess] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
-
-  // Bulk Upload & Batch Screening States
-  const [selectedFiles, setSelectedFiles] = useState([]);
   const [isDragging, setIsDragging] = useState(false);
-  const [aiProvider, setAiProvider] = useState('local');
-  const [aiModel, setAiModel] = useState('qwen3:4b');
-  const [geminiModel, setGeminiModel] = useState('gemini-2.5-flash');
-  const [geminiKey, setGeminiKey] = useState('');
-  const [isScreening, setIsScreening] = useState(false);
-  const [isMinimized, setIsMinimized] = useState(false);
-  const [batchFinished, setBatchFinished] = useState(false);
-  const [duplicateAlert, setDuplicateAlert] = useState('');
-
-  const [progress, setProgress] = useState({
-    total: 0,
-    current: 0,
-    completed: 0,
-    remaining: 0,
-    percentage: 0,
-    currentFileName: '',
-    results: [],
-  });
 
   const fileInputRef = useRef(null);
 
@@ -82,6 +86,15 @@ const Candidates = () => {
 
   // Real-time synchronization without manual refresh
   useRealtimeSync(fetchData);
+
+  // Auto-refresh candidate pool when background bulk scan finishes
+  useEffect(() => {
+    const handleScanDone = () => {
+      fetchData();
+    };
+    window.addEventListener('smarthire:bulk-scan-complete', handleScanDone);
+    return () => window.removeEventListener('smarthire:bulk-scan-complete', handleScanDone);
+  }, [fetchData]);
 
   const filterRoles = [
     { value: '', label: 'All Applied Jobs' },
@@ -185,137 +198,22 @@ const Candidates = () => {
     }
   };
 
-  // Execute Real-Time Batch AI Screening
-  const startBatchScreening = async () => {
+  // Trigger background batch AI screening via global BulkScanContext
+  const handleStartBatchScreening = () => {
     if (selectedFiles.length === 0) return;
 
     const targetJob = dbJobs.find((j) => String(j.id) === String(associatedJobId)) || dbJobs[0];
-    const jobTitle = targetJob ? targetJob.title : 'Software Engineer';
-    const jobDesc = targetJob ? targetJob.description || '' : '';
+    const effectiveModel = aiProvider === 'gemini'
+      ? (geminiModel || 'gemini-2.5-flash')
+      : (aiProvider === 'ollama' ? (aiModel || 'qwen3:4b') : null);
 
-    setIsScreening(true);
-    setBatchFinished(false);
-    setIsMinimized(false);
-
-    const total = selectedFiles.length;
-    setProgress({
-      total,
-      current: 1,
-      completed: 0,
-      remaining: total,
-      percentage: 0,
-      currentFileName: selectedFiles[0].name,
-      results: [],
+    startBatchScreening({
+      files: selectedFiles,
+      job: targetJob,
+      provider: aiProvider,
+      model: effectiveModel,
+      geminiApiKey: aiProvider === 'gemini' ? geminiKey : null,
     });
-
-    const collectedResults = [];
-    let completedCount = 0;
-
-    for (let i = 0; i < total; i++) {
-      const currentFile = selectedFiles[i];
-      setProgress((prev) => ({
-        ...prev,
-        current: i + 1,
-        currentFileName: currentFile.name,
-      }));
-
-      try {
-        const effectiveProvider = aiProvider;
-        const effectiveModel = aiProvider === 'gemini'
-          ? (geminiModel || 'gemini-2.5-flash')
-          : (aiProvider === 'ollama' ? (aiModel || 'qwen3:4b') : null);
-
-        const formData = new FormData();
-        formData.append('resumeFile', currentFile);
-        formData.append('jobRole', jobTitle);
-        formData.append('jobDescription', jobDesc);
-        formData.append('aiProvider', effectiveProvider);
-        if (effectiveModel) {
-          formData.append('model', effectiveModel);
-        }
-        if (aiProvider === 'gemini' && geminiKey) {
-          formData.append('geminiApiKey', geminiKey.trim());
-        }
-
-        const res = await api.post('/analysis/analyze', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-        });
-
-        const data = res.data?.analysis || res.data;
-        const candidateItem = {
-          fileName: currentFile.name,
-          candidateName: data?.candidateName || 'Candidate',
-          candidateEmail: data?.candidateEmail || '',
-          score: data?.overallScore ?? 65,
-          matchLevel: data?.matchLevel || (data?.overallScore >= 75 ? 'Strong Match' : 'Moderate Match'),
-          skills: data?.matchedSkillsList || (data?.skillsAnalysis?.matchedSkills) || [],
-          categoryScores: data?.categoryScores || {},
-          providerUsed: effectiveProvider === 'gemini'
-            ? `Google Gemini AI (${effectiveModel})`
-            : (effectiveProvider === 'ollama' ? `Ollama (${effectiveModel})` : 'Local High-Precision NLP'),
-          status: 'success',
-        };
-        collectedResults.push(candidateItem);
-      } catch (err) {
-        collectedResults.push({
-          fileName: currentFile.name,
-          candidateName: 'File ' + (i + 1),
-          status: 'error',
-          error: err.response?.data?.message || err.message || 'Parsing error',
-        });
-      }
-
-      completedCount++;
-      const pct = Math.round((completedCount / total) * 100);
-
-      setProgress((prev) => ({
-        ...prev,
-        completed: completedCount,
-        remaining: total - completedCount,
-        percentage: pct,
-        results: [...collectedResults],
-      }));
-    }
-
-    setIsScreening(false);
-    setBatchFinished(true);
-
-    // Refresh candidate table immediately
-    await fetchData();
-
-    // Notify the HR recruiter who initiated the task
-    try {
-      await api.post('/dashboard/candidates/bulk-upload/notify', {
-        jobId: targetJob ? targetJob.id : null,
-        jobTitle: jobTitle,
-        totalFiles: total,
-        successfulCount: collectedResults.filter((r) => r.status === 'success').length,
-        hrEmail: user?.email,
-      });
-      if (fetchNotifications) {
-        fetchNotifications();
-      }
-    } catch (notifErr) {
-      console.warn('Could not dispatch HR notification:', notifErr);
-    }
-  };
-
-  const resetBatchModal = () => {
-    setSelectedFiles([]);
-    setIsScreening(false);
-    setBatchFinished(false);
-    setIsMinimized(false);
-    setDuplicateAlert('');
-    setProgress({
-      total: 0,
-      current: 0,
-      completed: 0,
-      remaining: 0,
-      percentage: 0,
-      currentFileName: '',
-      results: [],
-    });
-    setModalOpen(false);
   };
 
   const filtered = candidates.filter((item) => {
@@ -379,6 +277,9 @@ const Candidates = () => {
               ></span>
             )}
           </button>
+          <Link className="btn btn-secondary" to="/dashboard/candidates/archived" id="btnArchivedCandidates" title="View recently deleted and archived candidates">
+            <i className="bi bi-archive"></i> Recently Deleted / Archived
+          </Link>
           <Link className="btn btn-primary" to="/dashboard/shortlist">
             <i className="bi bi-star"></i> Shortlisted ({shortlistedCount})
           </Link>
@@ -640,76 +541,6 @@ const Candidates = () => {
         )}
       </article>
 
-      {/* FLOATING MINI TASK MONITOR (When minimized during batch processing) */}
-      {isScreening && isMinimized && (
-        <div
-          style={{
-            position: 'fixed',
-            bottom: 'clamp(12px, 3vw, 24px)',
-            right: 'clamp(12px, 3vw, 24px)',
-            background: 'var(--bg-card)',
-            border: '2px solid var(--accent)',
-            borderRadius: 'var(--radius-lg)',
-            boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.3)',
-            padding: '16px 20px',
-            zIndex: 9999,
-            display: 'flex',
-            alignItems: 'center',
-            gap: '16px',
-            maxWidth: 'calc(100vw - 24px)',
-            minWidth: 'min(340px, calc(100vw - 24px))',
-          }}
-        >
-          <div
-            style={{
-              width: '12px',
-              height: '12px',
-              borderRadius: '50%',
-              background: 'var(--accent)',
-              boxShadow: '0 0 10px var(--accent)',
-              animation: 'pulse 1s infinite',
-            }}
-          ></div>
-          <div style={{ flex: 1 }}>
-            <strong style={{ display: 'block', fontSize: '0.88rem' }}>
-              AI Screening: {progress.completed} of {progress.total} Done
-            </strong>
-            <span style={{ fontSize: '0.75rem', color: 'var(--text-secondary)' }}>
-              {progress.remaining} remaining ({progress.percentage}%)
-            </span>
-            <div
-              style={{
-                width: '100%',
-                height: '5px',
-                background: 'var(--border-color)',
-                borderRadius: '3px',
-                marginTop: '6px',
-                overflow: 'hidden',
-              }}
-            >
-              <div
-                style={{
-                  width: `${progress.percentage}%`,
-                  height: '100%',
-                  background: 'var(--accent)',
-                  transition: 'width 0.3s ease',
-                }}
-              ></div>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => {
-              setIsMinimized(false);
-              setModalOpen(true);
-            }}
-          >
-            Expand
-          </button>
-        </div>
-      )}
-
       {/* BULK UPLOAD & LIVE AI SCREENING MODAL */}
       {modalOpen && (
         <div
@@ -816,10 +647,7 @@ const Candidates = () => {
                   <button
                     type="button"
                     className="btn btn-ghost btn-sm"
-                    onClick={() => {
-                      setIsMinimized(true);
-                      setModalOpen(false);
-                    }}
+                    onClick={() => minimizeScan()}
                     title="Minimize and run in background"
                   >
                     <i className="bi bi-dash-lg"></i> Minimize
@@ -1141,7 +969,7 @@ const Candidates = () => {
                     type="button"
                     className="btn btn-primary"
                     disabled={selectedFiles.length === 0}
-                    onClick={startBatchScreening}
+                    onClick={handleStartBatchScreening}
                     style={{ fontWeight: 700 }}
                   >
                     <i className="bi bi-cpu"></i> Upload &amp; Screen ({selectedFiles.length} Resumes)

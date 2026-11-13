@@ -36,6 +36,7 @@ import JobDetails from './pages/hr/JobDetails';
 import Applications from './pages/hr/Applications';
 import Candidates from './pages/hr/Candidates';
 import CandidateDetails from './pages/hr/CandidateDetails';
+import ArchivedCandidates from './pages/hr/ArchivedCandidates';
 import Shortlist from './pages/hr/Shortlist';
 import Interviews from './pages/hr/Interviews';
 import Feedback from './pages/hr/Feedback';
@@ -85,6 +86,8 @@ export default function App() {
         <Route path="jobs/:id" element={<JobDetails />} />
         <Route path="applications" element={<Applications />} />
         <Route path="candidates" element={<Candidates />} />
+        <Route path="candidates/archived" element={<ArchivedCandidates />} />
+        <Route path="archived-candidates" element={<ArchivedCandidates />} />
         <Route path="candidates/:id" element={<CandidateDetails />} />
         <Route path="shortlist" element={<Shortlist />} />
         <Route path="interviews" element={<Interviews />} />

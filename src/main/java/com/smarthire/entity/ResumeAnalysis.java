@@ -118,6 +118,17 @@ public class ResumeAnalysis {
     @Builder.Default
     private String stage = "Under Review";
 
+    @Column(name = "is_archived")
+    @Builder.Default
+    private Boolean isArchived = false;
+
+    @Column(name = "archived_at")
+    private LocalDateTime archivedAt;
+
+    @Column(name = "deleted_by_jobseeker")
+    @Builder.Default
+    private Boolean deletedByJobseeker = false;
+
     @Column(name = "interview_date")
     private LocalDateTime interviewDate;
 
@@ -484,6 +495,23 @@ public class ResumeAnalysis {
 
     public void setShortlisted(Boolean shortlisted) {
         this.shortlisted = (shortlisted != null) ? shortlisted : false;
+    }
+
+    public boolean isArchived() {
+        return Boolean.TRUE.equals(isArchived) || "Archived".equalsIgnoreCase(stage);
+    }
+
+    public void setArchived(Boolean archived) {
+        this.isArchived = (archived != null) ? archived : false;
+        if (Boolean.TRUE.equals(archived)) {
+            this.stage = "Archived";
+            if (this.archivedAt == null) {
+                this.archivedAt = LocalDateTime.now();
+            }
+        } else if ("Archived".equalsIgnoreCase(this.stage)) {
+            this.stage = "Under Review";
+            this.archivedAt = null;
+        }
     }
 
     public String getStatus() {
