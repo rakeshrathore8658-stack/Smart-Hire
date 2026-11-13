@@ -582,3 +582,896 @@
         margin-bottom: 0;
     }
 }
+
+/* ==========================================================================
+   Candidate Comparison Modal - Full Responsive Architecture (Phone, Tablet, Laptop)
+   ========================================================================== */
+
+/* Overlay */
+.comparison-modal-overlay {
+  display: flex;
+  position: fixed;
+  inset: 0;
+  background-color: rgba(15, 23, 42, 0.78);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  z-index: 99999;
+  padding: 16px;
+  align-items: center;
+  justify-content: center;
+  overflow-y: auto;
+}
+
+/* Modal Dialog Box */
+.comparison-modal-dialog {
+  max-width: 1240px;
+  width: 100%;
+  max-height: 94vh;
+  display: flex;
+  flex-direction: column;
+  background-color: var(--bg-primary);
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
+  border: 1px solid var(--border-color);
+  overflow: hidden;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+/* Header */
+.comparison-modal-header {
+  padding: 16px 22px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--bg-secondary);
+  gap: 16px;
+  position: relative;
+}
+
+.comparison-header-left {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1;
+  min-width: 0;
+}
+
+.comparison-header-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 10px;
+  background: linear-gradient(135deg, var(--primary) 0%, #1e40af 100%);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.comparison-header-info {
+  min-width: 0;
+}
+
+.comparison-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.comparison-modal-title {
+  margin: 0;
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.comparison-role-badge {
+  font-size: 0.75rem;
+  padding: 3px 8px;
+  border-radius: 12px;
+}
+
+.comparison-count-badge {
+  font-size: 0.72rem;
+  background: var(--bg-tertiary, #e2e8f0);
+  color: var(--text-secondary);
+  border-radius: 12px;
+  padding: 3px 8px;
+}
+
+.comparison-header-desc {
+  margin: 2px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.comparison-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+
+.comparison-view-toggle {
+  display: inline-flex;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.comparison-modal-close {
+  border: none;
+  background: transparent;
+  font-size: 1.2rem;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.comparison-modal-close:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.08);
+}
+
+/* Body */
+.comparison-modal-body {
+  padding: 20px 24px;
+  overflow-y: auto;
+  flex: 1;
+  background-color: var(--bg-primary);
+}
+
+/* AI Insights Banner */
+.comparison-insights-banner {
+  background-color: rgba(10, 102, 194, 0.05);
+  border: 1px solid rgba(10, 102, 194, 0.2);
+  border-radius: 12px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+}
+
+.comparison-insights-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* Shared Skills Strip */
+.comparison-shared-skills {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  margin-bottom: 18px;
+  flex-wrap: wrap;
+}
+
+/* Scroll Hint for Horizontal Scroll */
+.comparison-scroll-hint {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 12px;
+  margin-bottom: 12px;
+  background: rgba(10, 102, 194, 0.08);
+  border: 1px dashed rgba(10, 102, 194, 0.35);
+  border-radius: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--primary);
+}
+
+/* Matrix Table Wrapper */
+.comparison-table-wrapper {
+  border: 1px solid var(--border-color);
+  border-radius: 12px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  background: var(--bg-primary);
+  position: relative;
+}
+
+.comparison-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+.comparison-criteria-header,
+.comparison-criteria-cell {
+  position: sticky;
+  left: 0;
+  z-index: 10;
+  background: var(--bg-secondary) !important;
+  box-shadow: 2px 0 8px -2px rgba(0, 0, 0, 0.12);
+  min-width: 150px;
+  max-width: 200px;
+  vertical-align: middle;
+}
+
+.comparison-table thead .comparison-criteria-header {
+  z-index: 15;
+}
+
+.comparison-cand-th,
+.comparison-cand-td {
+  min-width: 220px;
+  text-align: center;
+  vertical-align: middle;
+}
+
+.comparison-cand-th.is-top-cand {
+  background-color: rgba(255, 121, 0, 0.03);
+}
+
+.comparison-cand-avatar-wrap {
+  position: relative;
+  display: inline-block;
+}
+
+.comparison-cand-remove-btn {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  background: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  font-size: 0.65rem;
+  cursor: pointer;
+  color: var(--danger);
+  transition: transform 0.15s ease;
+}
+
+.comparison-cand-remove-btn:hover {
+  transform: scale(1.15);
+}
+
+.comparison-cand-name {
+  margin: 0 0 2px;
+  font-size: 1.02rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.comparison-cand-email {
+  margin: 0 0 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  word-break: break-all;
+}
+
+.comparison-actions-cell {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+.comparison-action-btn {
+  font-size: 0.78rem;
+  padding: 6px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+
+/* Cards Grid View */
+.comparison-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 20px;
+}
+
+.comparison-card {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  border-radius: 14px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-primary);
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.comparison-card.is-top-cand-card {
+  border: 2px solid var(--accent, #ff7900);
+  box-shadow: 0 10px 25px -5px rgba(255, 121, 0, 0.15);
+}
+
+.comparison-top-badge {
+  position: absolute;
+  top: -12px;
+  right: 16px;
+  background: var(--accent, #ff7900);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 2px 10px;
+  border-radius: 10px;
+  box-shadow: 0 2px 6px rgba(255, 121, 0, 0.4);
+}
+
+.comparison-card-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.comparison-card-cand-info {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+  flex: 1;
+}
+
+.comparison-card-cand-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.comparison-card-name {
+  margin: 0 0 2px;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.comparison-card-email {
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: block;
+}
+
+.comparison-card-body {
+  padding: 20px;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.comparison-card-score-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--bg-secondary);
+  padding: 12px 14px;
+  border-radius: 8px;
+}
+
+.comparison-card-sublabel {
+  color: var(--text-muted);
+  display: block;
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.comparison-card-score-val {
+  font-size: 1.3rem;
+  color: var(--primary);
+}
+
+.comparison-card-score-val.is-top-score {
+  color: var(--accent, #ff7900);
+}
+
+.comparison-unique-heading {
+  font-weight: 700;
+  color: #7c3aed;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+}
+
+.comparison-section-heading {
+  font-weight: 700;
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+}
+
+.comparison-missing-heading {
+  font-weight: 700;
+  color: var(--danger);
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.78rem;
+}
+
+.comparison-skills-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.comparison-unique-pill {
+  font-size: 0.72rem;
+  padding: 2px 7px;
+  background: rgba(124, 58, 237, 0.1);
+  color: #7c3aed;
+  border-radius: 4px;
+  font-weight: 600;
+  border: 1px solid rgba(124, 58, 237, 0.2);
+}
+
+.comparison-skill-pill {
+  font-size: 0.72rem;
+  padding: 2px 6px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+}
+
+.comparison-missing-pill {
+  font-size: 0.7rem;
+  padding: 2px 6px;
+  background: rgba(239, 68, 68, 0.1);
+  color: var(--danger);
+  border-radius: 4px;
+  border: 1px solid rgba(239, 68, 68, 0.2);
+}
+
+.comparison-card-status-bar {
+  margin: 0 20px 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.comparison-card-status-bar.is-scheduled {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: rgba(16, 185, 129, 0.25);
+}
+
+.comparison-card-actions {
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  background: var(--bg-secondary);
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.comparison-card-btn-schedule {
+  flex: 1;
+  min-width: 130px;
+  text-align: center;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.comparison-card-btn-profile {
+  min-width: 70px;
+  text-align: center;
+}
+
+/* Modal Bottom Footer */
+.comparison-modal-footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--border-color);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: var(--bg-secondary);
+  gap: 12px;
+}
+
+/* Schedule Interview Modal */
+.comparison-schedule-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100000;
+  padding: 20px;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+
+.comparison-schedule-dialog {
+  max-width: 560px;
+  width: 100%;
+  max-height: 92vh;
+  overflow-y: auto;
+  background: var(--bg-primary);
+  border-radius: 16px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  padding: 24px;
+  border: 1px solid var(--border-color);
+}
+
+.comparison-schedule-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-color);
+  padding-bottom: 12px;
+  gap: 10px;
+}
+
+.comparison-schedule-title {
+  margin: 0;
+  font-size: 1.18rem;
+  color: var(--text-primary);
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.comparison-schedule-desc {
+  margin: 3px 0 0;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.comparison-schedule-close {
+  font-size: 1.3rem;
+  cursor: pointer;
+  line-height: 1;
+}
+
+.comparison-schedule-cand-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 14px;
+  background: var(--bg-secondary);
+  border-radius: 10px;
+  border: 1px solid var(--border-color);
+  margin-bottom: 18px;
+  gap: 10px;
+}
+
+.comparison-schedule-avatar {
+  width: 38px;
+  height: 38px;
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-weight: 700;
+  display: grid;
+  place-items: center;
+  font-size: 0.9rem;
+  flex-shrink: 0;
+}
+
+.comparison-schedule-row-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+}
+
+.comparison-schedule-mode-group {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.comparison-schedule-mode-pill {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  background: transparent;
+  font-size: 0.85rem;
+  transition: all 0.15s ease;
+}
+
+.comparison-schedule-mode-pill.is-active {
+  border-color: var(--accent);
+  background: rgba(255, 121, 0, 0.08);
+}
+
+.comparison-schedule-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  border-top: 1px solid var(--border-color);
+  padding-top: 14px;
+}
+
+
+/* ==========================================================================
+   Breakpoints: Tablet (max-width: 992px)
+   ========================================================================== */
+@media (max-width: 992px) {
+  .comparison-modal-dialog {
+    max-width: 96vw;
+    max-height: 95vh;
+    border-radius: 14px;
+  }
+  .comparison-modal-header {
+    padding: 14px 18px;
+  }
+  .comparison-modal-body {
+    padding: 16px 18px;
+  }
+  .comparison-scroll-hint {
+    display: flex;
+  }
+  .comparison-cand-th,
+  .comparison-cand-td {
+    min-width: 200px;
+    padding: 10px 12px !important;
+  }
+  .comparison-criteria-header,
+  .comparison-criteria-cell {
+    min-width: 140px;
+    padding: 10px 12px !important;
+    font-size: 0.82rem;
+  }
+  .comparison-cards-grid {
+    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+    gap: 16px;
+  }
+}
+
+/* ==========================================================================
+   Breakpoints: Mobile Phones & Phablets (max-width: 768px)
+   ========================================================================== */
+@media (max-width: 768px) {
+  .comparison-modal-overlay {
+    padding: 0;
+    align-items: flex-end;
+  }
+  .comparison-modal-dialog {
+    max-width: 100vw;
+    width: 100%;
+    height: 100%;
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    border: none;
+  }
+  .comparison-modal-header {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 10px 8px;
+    padding: 12px 14px;
+  }
+  .comparison-header-left {
+    grid-column: 1 / 2;
+    grid-row: 1 / 2;
+  }
+  .comparison-header-desc {
+    display: none;
+  }
+  .comparison-modal-title {
+    font-size: 1.05rem;
+  }
+  .comparison-modal-close {
+    grid-column: 2 / 3;
+    grid-row: 1 / 2;
+    align-self: center;
+    padding: 6px;
+  }
+  .comparison-header-actions {
+    grid-column: 1 / 3;
+    grid-row: 2 / 3;
+    width: 100%;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
+  }
+  .comparison-view-toggle {
+    flex: 1;
+    display: flex;
+  }
+  .comparison-view-toggle button {
+    flex: 1;
+    justify-content: center;
+    padding: 6px 8px !important;
+  }
+  .comparison-print-btn span {
+    display: none;
+  }
+  .comparison-print-btn {
+    padding: 6px 10px !important;
+  }
+
+  .comparison-modal-body {
+    padding: 12px 14px;
+  }
+  .comparison-insights-banner {
+    padding: 10px 12px;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+  .comparison-insights-icon {
+    width: 28px;
+    height: 28px;
+    font-size: 0.88rem;
+  }
+  .comparison-shared-skills {
+    padding: 8px 12px;
+    margin-bottom: 14px;
+  }
+
+  /* Table on mobile */
+  .comparison-criteria-header,
+  .comparison-criteria-cell {
+    min-width: 125px;
+    max-width: 140px;
+    font-size: 0.78rem !important;
+    padding: 10px 8px !important;
+  }
+  .comparison-cand-th,
+  .comparison-cand-td {
+    min-width: 185px;
+    padding: 10px 8px !important;
+  }
+  .comparison-cand-name {
+    font-size: 0.9rem;
+  }
+  .comparison-cand-email {
+    font-size: 0.72rem;
+  }
+  .candidate-cell-avatar {
+    width: 42px !important;
+    height: 42px !important;
+    font-size: 1rem !important;
+  }
+  .comparison-actions-cell {
+    flex-direction: column;
+    gap: 6px;
+  }
+  .comparison-actions-cell .btn {
+    width: 100%;
+    padding: 6px 8px !important;
+    font-size: 0.75rem !important;
+  }
+
+  /* Cards on mobile */
+  .comparison-cards-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+  .comparison-card-header {
+    padding: 14px 16px;
+  }
+  .comparison-card-body {
+    padding: 14px 16px;
+    gap: 12px;
+  }
+  .comparison-card-status-bar {
+    margin: 0 16px 10px;
+    padding: 8px 12px;
+  }
+  .comparison-card-actions {
+    padding: 12px 16px;
+    gap: 6px;
+  }
+  .comparison-card-btn-schedule {
+    width: 100%;
+    flex: unset;
+  }
+
+  /* Footer on mobile */
+  .comparison-modal-footer {
+    flex-direction: column;
+    gap: 10px;
+    padding: 12px 14px;
+    text-align: center;
+  }
+  .comparison-modal-footer .btn {
+    width: 100%;
+    padding: 9px 16px;
+  }
+
+  /* Schedule popup on mobile */
+  .comparison-schedule-overlay {
+    padding: 8px;
+    align-items: flex-end;
+  }
+  .comparison-schedule-dialog {
+    padding: 16px 14px;
+    border-radius: 14px 14px 0 0;
+    max-height: 94dvh;
+    border-bottom: none;
+  }
+  .comparison-schedule-dialog input,
+  .comparison-schedule-dialog select,
+  .comparison-schedule-dialog textarea {
+    font-size: 16px !important;
+  }
+  .comparison-schedule-footer {
+    flex-direction: column-reverse;
+    gap: 8px;
+  }
+  .comparison-schedule-footer button {
+    width: 100%;
+    justify-content: center;
+  }
+}
+
+/* ==========================================================================
+   Breakpoints: Small Phone Screens (max-width: 480px)
+   ========================================================================== */
+@media (max-width: 480px) {
+  .comparison-header-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 1rem;
+  }
+  .comparison-modal-title {
+    font-size: 0.95rem;
+  }
+  .comparison-role-badge,
+  .comparison-count-badge {
+    font-size: 0.68rem;
+    padding: 2px 6px;
+  }
+  .comparison-criteria-header,
+  .comparison-criteria-cell {
+    min-width: 110px;
+    max-width: 125px;
+    font-size: 0.74rem !important;
+  }
+  .comparison-cand-th,
+  .comparison-cand-td {
+    min-width: 165px;
+  }
+  .comparison-schedule-cand-pill {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
+

@@ -137,7 +137,6 @@ const ResumeAnalyzer = () => {
             const matched = list.find((j) => j.title.toLowerCase() === roleParam.toLowerCase());
             if (matched) {
               setTargetRole(matched.title);
-              if (matched.description) setJobDescription(matched.description);
             }
           }
         }
@@ -1023,10 +1022,6 @@ const ResumeAnalyzer = () => {
                       value={targetRole}
                       onChange={(selectedVal) => {
                         setTargetRole(selectedVal);
-                        const found = dbJobs.find((j) => j.title?.toLowerCase() === selectedVal?.toLowerCase());
-                        if (found && found.description && !jobDescription) {
-                          setJobDescription(found.description);
-                        }
                       }}
                       options={roleOptions}
                       placeholder="Select Target Job Role..."
