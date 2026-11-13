@@ -1,30 +1,9 @@
 import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useNotifications } from '../context/NotificationContext';
-import EmptyState from '../components/common/EmptyState';
 import NotificationDetailModal from '../components/common/NotificationDetailModal';
-import { formatTimeAgo } from '../utils/timeAgo';
-
-const getNotificationBadge = (type) => {
-  switch (type?.toUpperCase()) {
-    case 'SHORTLIST':
-      return { label: 'Shortlist', bg: 'rgba(16, 185, 129, 0.15)', color: '#10b981', icon: 'bi-star-fill' };
-    case 'STAGE_CHANGE':
-      return { label: 'Status Update', bg: 'rgba(59, 130, 246, 0.15)', color: '#3b82f6', icon: 'bi-arrow-repeat' };
-    case 'INTERVIEW':
-      return { label: 'Interview', bg: 'rgba(139, 92, 246, 0.15)', color: '#8b5cf6', icon: 'bi-calendar-check' };
-    case 'FEEDBACK':
-      return { label: 'Feedback', bg: 'rgba(20, 184, 166, 0.15)', color: '#14b8a6', icon: 'bi-chat-left-quote' };
-    case 'JOB_POSTING':
-      return { label: 'New Job', bg: 'rgba(99, 102, 241, 0.15)', color: '#6366f1', icon: 'bi-briefcase' };
-    case 'ANALYSIS':
-      return { label: 'ATS Analysis', bg: 'rgba(255, 121, 0, 0.15)', color: '#ff7900', icon: 'bi-cpu' };
-    case 'BULK_UPLOAD':
-      return { label: 'Bulk Screening', bg: 'rgba(255, 121, 0, 0.15)', color: '#ff7900', icon: 'bi-cloud-check-fill' };
-    default:
-      return { label: 'Update', bg: 'rgba(100, 116, 139, 0.15)', color: '#64748b', icon: 'bi-bell' };
-  }
-};
+import { formatTimeAgo, formatNotificationTime } from '../utils/timeAgo';
+import { formatNotificationDisplay } from '../utils/notificationFormatter';
 
 const Notifications = () => {
   const {
@@ -45,19 +24,24 @@ const Notifications = () => {
       markAsRead(notif.id);
     }
     const enriched = await getNotificationDetails(notif.id);
-    setSelectedDetailNotif(enriched || notif);
+    const display = formatNotificationDisplay(enriched || notif);
+    setSelectedDetailNotif({
+      ...(enriched || notif),
+      title: display.title,
+      message: display.message,
+    });
   };
 
-  const shortlistCount = notifications.filter((n) => n.type === 'SHORTLIST').length;
-  const interviewCount = notifications.filter((n) => n.type === 'INTERVIEW').length;
-  const stageCount = notifications.filter((n) => n.type === 'STAGE_CHANGE').length;
+  const shortlistCount = notifications.filter((n) => n.type === 'SHORTLIST' || n.actionType?.includes('SHORTLIST')).length;
+  const interviewCount = notifications.filter((n) => n.type === 'INTERVIEW' || n.actionType?.includes('INTERVIEW') || n.type === 'FEEDBACK').length;
+  const stageCount = notifications.filter((n) => n.type === 'STAGE_CHANGE' || n.actionType?.includes('STAGE')).length;
   const jobCount = notifications.filter((n) => n.type === 'JOB_POSTING').length;
 
   const filtered = notifications.filter((item) => {
     if (activeFilter === 'unread') return !item.isRead;
-    if (activeFilter === 'SHORTLIST') return item.type === 'SHORTLIST';
-    if (activeFilter === 'INTERVIEW') return item.type === 'INTERVIEW';
-    if (activeFilter === 'STAGE_CHANGE') return item.type === 'STAGE_CHANGE';
+    if (activeFilter === 'SHORTLIST') return item.type === 'SHORTLIST' || item.actionType?.includes('SHORTLIST');
+    if (activeFilter === 'INTERVIEW') return item.type === 'INTERVIEW' || item.actionType?.includes('INTERVIEW') || item.type === 'FEEDBACK';
+    if (activeFilter === 'STAGE_CHANGE') return item.type === 'STAGE_CHANGE' || item.actionType?.includes('STAGE');
     if (activeFilter === 'JOB_POSTING') return item.type === 'JOB_POSTING';
     return true;
   });
@@ -166,7 +150,8 @@ const Notifications = () => {
             </div>
           ) : filtered.length > 0 ? (
             filtered.map((notif) => {
-              const meta = getNotificationBadge(notif.type);
+              const display = formatNotificationDisplay(notif);
+              const meta = display.badge;
               return (
                 <div
                   key={notif.id}
@@ -223,7 +208,7 @@ const Notifications = () => {
                             textTransform: 'uppercase',
                           }}
                         >
-                          {meta.label}
+                          {meta.text}
                         </span>
                         <strong
                           style={{
@@ -232,7 +217,7 @@ const Notifications = () => {
                             fontWeight: notif.isRead ? 600 : 700,
                           }}
                         >
-                          {notif.title}
+                          {display.title}
                         </strong>
                         {!notif.isRead && (
                           <span
@@ -243,39 +228,57 @@ const Notifications = () => {
                           </span>
                         )}
                       </div>
-                      <small style={{ color: 'var(--text-muted)', fontSize: '0.78rem' }}>
-                        {formatTimeAgo(notif.createdAt || notif.timeAgo)}
-                      </small>
+                      {(() => {
+                        const timeInfo = formatNotificationTime(notif.createdAt || notif.timeAgo);
+                        return (
+                          <small
+                            style={{
+                              color: 'var(--text-muted)',
+                              fontSize: '0.78rem',
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '6px',
+                            }}
+                            title={`Exact Timestamp: ${timeInfo.exact}`}
+                          >
+                            <i className="bi bi-clock" style={{ fontSize: '0.74rem' }}></i>
+                            <span style={{ fontWeight: 600 }}>{timeInfo.relative}</span>
+                            <span style={{ opacity: 0.65, fontSize: '0.74rem' }}>&bull; {timeInfo.exact}</span>
+                          </small>
+                        );
+                      })()}
                     </div>
 
                     <p style={{ fontSize: '0.86rem', color: 'var(--text-secondary)', margin: '0 0 10px', lineHeight: 1.5 }}>
-                      {notif.message}
+                      {display.message}
                     </p>
 
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
                       <button
                         type="button"
-                        className="btn btn-secondary btn-sm"
-                        style={{ fontSize: '0.8rem', padding: '4px 14px' }}
+                        className="btn btn-outline btn-sm"
                         onClick={() => handleOpenDetails(notif)}
+                        style={{ fontSize: '0.78rem', padding: '4px 12px' }}
                       >
                         View Details &rarr;
                       </button>
+
                       {!notif.isRead && (
                         <button
                           type="button"
                           className="btn btn-ghost btn-sm"
-                          style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}
                           onClick={() => markAsRead(notif.id)}
+                          style={{ fontSize: '0.78rem', padding: '4px 8px', color: 'var(--text-muted)' }}
                         >
                           <i className="bi bi-check2"></i> Mark as Read
                         </button>
                       )}
+
                       <button
                         type="button"
                         className="btn btn-ghost btn-sm"
-                        style={{ fontSize: '0.8rem', color: '#ef4444', marginLeft: 'auto' }}
                         onClick={() => deleteNotification(notif.id)}
+                        style={{ fontSize: '0.85rem', padding: '4px 8px', color: 'var(--text-muted)', marginLeft: 'auto' }}
                         title="Delete notification"
                         aria-label="Delete notification"
                       >
@@ -287,22 +290,18 @@ const Notifications = () => {
               );
             })
           ) : (
-            <div style={{ padding: '32px 20px' }}>
-              <EmptyState
-                icon="bi-bell-slash"
-                title="No Notifications Found"
-                description={
-                  activeFilter === 'unread'
-                    ? "You're all caught up! There are no unread notifications right now."
-                    : "No notifications match this category yet. When recruiters take action or schedule interviews, alerts will appear here."
-                }
-              />
+            <div style={{ textAlign: 'center', padding: '60px 20px', color: 'var(--text-muted)' }}>
+              <i className="bi bi-bell-slash" style={{ fontSize: '2.4rem', opacity: 0.5, display: 'block', marginBottom: '12px' }}></i>
+              <h3 style={{ margin: '0 0 6px', fontSize: '1rem', color: 'var(--text-primary)' }}>No notifications found</h3>
+              <p style={{ margin: 0, fontSize: '0.85rem' }}>
+                {activeFilter === 'unread' ? 'You have read all your notifications.' : 'You have no notifications in this category yet.'}
+              </p>
             </div>
           )}
         </div>
       </article>
 
-      {/* Reusable View Details Modal */}
+      {/* Modern Detailed Notification Modal */}
       {selectedDetailNotif && (
         <NotificationDetailModal
           notification={selectedDetailNotif}

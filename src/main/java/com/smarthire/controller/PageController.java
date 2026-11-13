@@ -1131,11 +1131,26 @@ public class PageController {
                 String candEmail = analysis.getCandidateEmail();
                 if (candEmail != null && !candEmail.isBlank() && notificationService != null) {
                     String roleName = analysis.getTargetJobRole() != null ? analysis.getTargetJobRole() : "Open Position";
-                    String title = willBeShortlisted ? "You have been Shortlisted! ⭐" : "Application Status Updated";
+                    String title = willBeShortlisted ? "Congratulations! Your Application Has Been Shortlisted ⭐" : "Application Status: Removed from Shortlist";
                     String msg = willBeShortlisted
-                            ? "Congratulations " + analysis.getCandidateName() + "! Your application for " + roleName + " has been shortlisted by the recruiting team."
-                            : "Your shortlist status for " + roleName + " has been updated by HR.";
-                    notificationService.sendNotification(candEmail, analysis.getCandidateName(), title, msg, "SHORTLIST", "/dashboard/analyzerhistory");
+                            ? "Congratulations " + analysis.getCandidateName() + "! Your resume profile for the '" + roleName + "' position has been shortlisted by the recruitment team. You have advanced to the interview evaluation round."
+                            : "Hello " + analysis.getCandidateName() + ", your application for '" + roleName + "' has been moved from the Shortlist back to 'Under Review' by the recruitment team. Our hiring team will notify you if your profile is selected for interview rounds.";
+                    notificationService.sendEnrichedNotification(
+                            candEmail,
+                            analysis.getCandidateName(),
+                            title,
+                            msg,
+                            "SHORTLIST",
+                            "/dashboard/notifications",
+                            analysis.getId(),
+                            "APPLICATION",
+                            roleName,
+                            willBeShortlisted ? "SHORTLIST_ADDED" : "SHORTLIST_REMOVED",
+                            willBeShortlisted ? "Under Review" : "SHORTLISTED",
+                            willBeShortlisted ? "SHORTLISTED" : "Under Review",
+                            "SmartHire Recruitment Team",
+                            null, null, null, null, null
+                    );
                 }
             });
         } catch (Exception ignored) {
@@ -1261,9 +1276,58 @@ public class PageController {
             String candEmail = analysis.getCandidateEmail();
             if (candEmail != null && !candEmail.isBlank() && notificationService != null) {
                 String roleName = analysis.getTargetJobRole() != null ? analysis.getTargetJobRole() : "Job Requisition";
-                String title = "Application Stage Updated: " + stage;
-                String msg = "Your application for " + roleName + " has been moved to stage: " + stage + " by the HR recruiter.";
-                notificationService.sendNotification(candEmail, analysis.getCandidateName(), title, msg, "STAGE_CHANGE", "/dashboard/analyzerhistory");
+                String title;
+                String msg;
+                String notifType = "STAGE_CHANGE";
+                String actionType = "STAGE_UPDATED";
+
+                if ("Shortlisted".equalsIgnoreCase(stage)) {
+                    title = "Congratulations! Your Application Has Been Shortlisted ⭐";
+                    msg = "Hello " + analysis.getCandidateName() + ", congratulations! Your resume profile for the '" + roleName + "' position has been shortlisted by the recruitment team. You have advanced to the interview evaluation round.";
+                    notifType = "SHORTLIST";
+                    actionType = "SHORTLIST_ADDED";
+                } else if ("Under Review".equalsIgnoreCase(stage)) {
+                    title = "Application Under Review: " + roleName;
+                    msg = "Hello " + analysis.getCandidateName() + ", your application for '" + roleName + "' is currently under active review by the hiring team. We are matching your profile with role requisitions.";
+                    actionType = "STAGE_UNDER_REVIEW";
+                } else if ("Interviewing".equalsIgnoreCase(stage)) {
+                    title = "Application Advanced to Interview Stage: " + roleName;
+                    msg = "Hello " + analysis.getCandidateName() + ", great news! Your application for '" + roleName + "' has officially moved to the Interviewing stage. Our recruitment team will coordinate with you regarding the schedule.";
+                    notifType = "INTERVIEW";
+                    actionType = "STAGE_INTERVIEWING";
+                } else if ("Offered".equalsIgnoreCase(stage)) {
+                    title = "🎉 Congratulations! Job Offer Extended for " + roleName;
+                    msg = "Hello " + analysis.getCandidateName() + ", we are thrilled to inform you that a formal job offer has been extended for the '" + roleName + "' position! Our team will share your offer letter details shortly.";
+                    actionType = "STAGE_OFFERED";
+                } else if ("Hired".equalsIgnoreCase(stage)) {
+                    title = "🎊 Welcome Aboard! You Are Hired as " + roleName;
+                    msg = "Hello " + analysis.getCandidateName() + ", congratulations! You have been officially hired as '" + roleName + "'. Welcome to the team!";
+                    actionType = "STAGE_HIRED";
+                } else if ("Rejected".equalsIgnoreCase(stage)) {
+                    title = "Application Status Update: " + roleName;
+                    msg = "Hello " + analysis.getCandidateName() + ", thank you for applying for '" + roleName + "'. While we were impressed with your qualifications, we have decided to move forward with other candidates at this time.";
+                    actionType = "STAGE_REJECTED";
+                } else {
+                    title = "Application Stage Updated: " + stage;
+                    msg = "Hello " + analysis.getCandidateName() + ", your application for '" + roleName + "' has been moved to stage: " + stage + " by the HR recruiter.";
+                }
+
+                notificationService.sendEnrichedNotification(
+                        candEmail,
+                        analysis.getCandidateName(),
+                        title,
+                        msg,
+                        notifType,
+                        "/dashboard/notifications",
+                        analysis.getId(),
+                        "APPLICATION",
+                        roleName,
+                        actionType,
+                        null,
+                        stage,
+                        "SmartHire Recruitment Team",
+                        null, null, null, null, null
+                );
             }
         });
         String redirectUrl = "/dashboard/applications?saved=true";
@@ -1416,12 +1480,27 @@ public class PageController {
             String candEmail = resolveCandidateEmail(analysis);
             if (candEmail != null && !candEmail.isBlank() && notificationService != null) {
                 String title = isReschedule
-                        ? "Interview Rescheduled 🔄 (" + round + ")"
-                        : "Interview Scheduled 📅 (" + round + ")";
+                        ? "Interview Rescheduled: " + roleName + " (" + round + ")"
+                        : "Interview Scheduled: " + roleName + " (" + round + ")";
                 String msg = isReschedule
-                        ? "Your interview for " + roleName + " has been rescheduled to " + formattedDate + " via " + interviewType + " with " + interviewer + "."
-                        : "An interview for " + roleName + " has been scheduled on " + formattedDate + " via " + interviewType + " with " + interviewer + ".";
-                notificationService.sendNotification(candEmail, analysis.getCandidateName(), title, msg, "INTERVIEW", "/dashboard/notifications");
+                        ? "Hello " + analysis.getCandidateName() + ", your " + round + " interview for '" + roleName + "' has been rescheduled to " + formattedDate + " via " + interviewType + " with " + interviewer + ". Please review the updated schedule."
+                        : "Hello " + analysis.getCandidateName() + ", great news! Your " + round + " interview for '" + roleName + "' has been scheduled on " + formattedDate + " via " + interviewType + " with " + interviewer + ". Please be ready and join on time.";
+                notificationService.sendEnrichedNotification(
+                        candEmail,
+                        analysis.getCandidateName(),
+                        title,
+                        msg,
+                        "INTERVIEW",
+                        "/dashboard/notifications",
+                        analysis.getId(),
+                        "INTERVIEW",
+                        roleName,
+                        isReschedule ? "INTERVIEW_RESCHEDULED" : "INTERVIEW_SCHEDULED",
+                        "Interviewing",
+                        "Interviewing",
+                        interviewer,
+                        null, null, interviewType, null, null
+                );
             }
         });
         return "redirect:/dashboard/interviews?" + (wasRescheduled[0] ? "rescheduled=true" : "scheduled=true");
@@ -1443,9 +1522,24 @@ public class PageController {
             // Dispatch real-time cancellation notification to candidate
             String candEmail = resolveCandidateEmail(analysis);
             if (candEmail != null && !candEmail.isBlank() && notificationService != null) {
-                String title = "Interview Cancelled ❌ (" + round + ")";
-                String msg = "Your interview for " + roleName + " originally scheduled for " + formattedDate + " has been cancelled by the recruitment team. We will follow up with further details.";
-                notificationService.sendNotification(candEmail, analysis.getCandidateName(), title, msg, "INTERVIEW", "/dashboard/notifications");
+                String title = "Interview Cancelled: " + roleName;
+                String msg = "Hello " + analysis.getCandidateName() + ", your scheduled " + round + " interview for '" + roleName + "' on " + formattedDate + " has been cancelled by the recruitment team. Your profile remains active under review and we will follow up with next steps.";
+                notificationService.sendEnrichedNotification(
+                        candEmail,
+                        analysis.getCandidateName(),
+                        title,
+                        msg,
+                        "INTERVIEW",
+                        "/dashboard/notifications",
+                        analysis.getId(),
+                        "INTERVIEW",
+                        roleName,
+                        "INTERVIEW_CANCELLED",
+                        "Interviewing",
+                        "Under Review",
+                        "SmartHire Recruitment Team",
+                        null, null, null, null, null
+                );
             }
         });
         return "redirect:/dashboard/interviews?cancelled=true";
@@ -1507,8 +1601,23 @@ public class PageController {
             if (candEmail != null && !candEmail.isBlank() && notificationService != null) {
                 String roleName = analysis.getTargetJobRole() != null ? analysis.getTargetJobRole() : "Position";
                 String title = "Interview Evaluation: " + recommendation + " ⭐";
-                String msg = "The recruiting team recorded feedback for your " + roleName + " interview. Outcome: " + recommendation + ". Score: " + analysis.getFeedbackScore() + "%.";
-                notificationService.sendNotification(candEmail, analysis.getCandidateName(), title, msg, "FEEDBACK", "/dashboard/notifications");
+                String msg = "Hello " + analysis.getCandidateName() + ", feedback for your '" + roleName + "' interview has been recorded by the hiring panel. Outcome: " + recommendation + " (Score: " + analysis.getFeedbackScore() + "%). Check your application details for latest updates.";
+                notificationService.sendEnrichedNotification(
+                        candEmail,
+                        analysis.getCandidateName(),
+                        title,
+                        msg,
+                        "FEEDBACK",
+                        "/dashboard/notifications",
+                        analysis.getId(),
+                        "APPLICATION",
+                        roleName,
+                        "INTERVIEW_FEEDBACK",
+                        null,
+                        analysis.getStage(),
+                        "SmartHire Recruitment Team",
+                        null, null, null, null, null
+                );
             }
         });
         return "redirect:/dashboard/interviews?feedbackSaved=true";

@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { formatTimeAgo } from '../../utils/timeAgo';
+import { formatTimeAgo, formatExactDateTime } from '../../utils/timeAgo';
+import { formatNotificationDisplay } from '../../utils/notificationFormatter';
 
 export default function NotificationToast({ notification, onClose, onClick }) {
   const [isClosing, setIsClosing] = useState(false);
@@ -19,6 +20,8 @@ export default function NotificationToast({ notification, onClose, onClick }) {
   };
 
   if (!notification) return null;
+
+  const display = formatNotificationDisplay(notification);
 
   return (
     <>
@@ -105,7 +108,7 @@ export default function NotificationToast({ notification, onClose, onClick }) {
               animation: 'toastPulseRing 2s infinite',
             }}
           >
-            <i className={notification.iconClass || 'bi bi-bell-fill'}></i>
+            <i className={`bi ${display.badge.icon || 'bi-bell-fill'}`}></i>
           </div>
 
           {/* Content */}
@@ -113,14 +116,14 @@ export default function NotificationToast({ notification, onClose, onClick }) {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
               <span
                 style={{
-                  fontSize: '0.75rem',
+                  fontSize: '0.72rem',
                   fontWeight: 700,
                   textTransform: 'uppercase',
-                  letterSpacing: '0.06em',
+                  letterSpacing: '0.05em',
                   color: '#ff7900',
                 }}
               >
-                New Notification
+                {display.badge.text}
               </span>
               <span
                 style={{
@@ -130,6 +133,7 @@ export default function NotificationToast({ notification, onClose, onClick }) {
                   alignItems: 'center',
                   gap: '4px',
                 }}
+                title={`Exact Timestamp: ${formatExactDateTime(notification.createdAt)}`}
               >
                 <i className="bi bi-clock"></i> {formatTimeAgo(notification.createdAt)}
               </span>
@@ -144,7 +148,7 @@ export default function NotificationToast({ notification, onClose, onClick }) {
                 lineHeight: 1.3,
               }}
             >
-              {notification.title || 'Notification'}
+              {display.title}
             </h4>
 
             <p
@@ -159,7 +163,7 @@ export default function NotificationToast({ notification, onClose, onClick }) {
                 overflow: 'hidden',
               }}
             >
-              {notification.message}
+              {display.message}
             </p>
           </div>
 

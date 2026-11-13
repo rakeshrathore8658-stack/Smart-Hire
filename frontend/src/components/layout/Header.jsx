@@ -6,7 +6,8 @@ import { useNotifications } from '../../context/NotificationContext';
 import { useOnboarding } from '../../context/OnboardingContext';
 import ProfileDropdown from './ProfileDropdown';
 import NotificationDetailModal from '../common/NotificationDetailModal';
-import { formatTimeAgo } from '../../utils/timeAgo';
+import { formatTimeAgo, formatNotificationTime } from '../../utils/timeAgo';
+import { formatNotificationDisplay } from '../../utils/notificationFormatter';
 
 const Header = ({ pageTitle, toggleSidebar, isCollapsed, isMobileOpen }) => {
   const { user, role, logout } = useAuth();
@@ -160,48 +161,66 @@ const Header = ({ pageTitle, toggleSidebar, isCollapsed, isMobileOpen }) => {
 
                 <div className="notifications-list" id="topbarNotificationsList">
                   {notifications.length > 0 ? (
-                    notifications.slice(0, 5).map((notif) => (
-                      <div
-                        key={notif.id}
-                        className={`notification-item-row ${notif.isRead ? 'is-read' : 'is-unread'}`}
-                      >
-                        <button
-                          type="button"
-                          onClick={(e) => handleNotificationClick(notif, e)}
-                          className={`notification-item ${notif.isRead ? '' : 'unread'}`}
-                          style={{
-                            textAlign: 'left',
-                            background: 'none',
-                            border: 'none',
-                            width: '100%',
-                            cursor: 'pointer',
-                            display: 'flex',
-                          }}
+                    notifications.slice(0, 5).map((notif) => {
+                      const display = formatNotificationDisplay(notif);
+                      return (
+                        <div
+                          key={notif.id}
+                          className={`notification-item-row ${notif.isRead ? 'is-read' : 'is-unread'}`}
                         >
-                          <span className="notif-icon" aria-hidden="true">
-                            <i className={`bi ${notif.iconClass || 'bi-info-circle'}`}></i>
-                          </span>
-                          <div className="notif-content">
-                            <p className="notif-title">{notif.title}</p>
-                            <span className="notif-time">{formatTimeAgo(notif.createdAt || notif.timeAgo)}</span>
-                          </div>
-                        </button>
-                        {!notif.isRead && (
                           <button
                             type="button"
-                            className="btn-mark-single-read"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              markAsRead(notif.id);
+                            onClick={(e) => handleNotificationClick({ ...notif, title: display.title, message: display.message }, e)}
+                            className={`notification-item ${notif.isRead ? '' : 'unread'}`}
+                            style={{
+                              textAlign: 'left',
+                              background: 'none',
+                              border: 'none',
+                              width: '100%',
+                              cursor: 'pointer',
+                              display: 'flex',
                             }}
-                            title="Mark as read"
-                            aria-label="Mark notification as read"
                           >
-                            <span className="unread-dot"></span>
+                            <span className="notif-icon" aria-hidden="true" style={{ color: display.badge.color }}>
+                              <i className={`bi ${display.badge.icon}`}></i>
+                            </span>
+                            <div className="notif-content">
+                              <p className="notif-title">{display.title}</p>
+                              {(() => {
+                                const timeInfo = formatNotificationTime(notif.createdAt || notif.timeAgo);
+                                return (
+                                  <span
+                                    className="notif-time"
+                                    title={`Exact Timestamp: ${timeInfo.exact}`}
+                                    style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+                                  >
+                                    <i className="bi bi-clock" style={{ fontSize: '0.68rem' }}></i>
+                                    <span>{timeInfo.relative}</span>
+                                    {timeInfo.timeOnly && (
+                                      <span style={{ opacity: 0.65, fontSize: '0.72rem' }}>&bull; {timeInfo.timeOnly}</span>
+                                    )}
+                                  </span>
+                                );
+                              })()}
+                            </div>
                           </button>
-                        )}
-                      </div>
-                    ))
+                          {!notif.isRead && (
+                            <button
+                              type="button"
+                              className="btn-mark-single-read"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                markAsRead(notif.id);
+                              }}
+                              title="Mark as read"
+                              aria-label="Mark notification as read"
+                            >
+                              <span className="unread-dot"></span>
+                            </button>
+                          )}
+                        </div>
+                      );
+                    })
                   ) : (
                     <div id="topbarEmptyState" style={{ padding: '24px 16px', textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.85rem' }}>
                       <i className="bi bi-bell-slash" style={{ fontSize: '1.6rem', display: 'block', marginBottom: '8px', opacity: 0.5 }}></i>

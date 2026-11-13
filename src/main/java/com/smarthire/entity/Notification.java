@@ -82,20 +82,21 @@ public class Notification {
     @Builder.Default
     private boolean isRead = false;
 
+    @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
 
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {
-            createdAt = LocalDateTime.now();
+            createdAt = LocalDateTime.now(java.time.ZoneOffset.UTC);
         }
     }
 
     public String getTimeAgo() {
         if (createdAt == null) return "Just now";
         try {
-            Duration duration = Duration.between(createdAt, LocalDateTime.now());
+            Duration duration = Duration.between(createdAt, LocalDateTime.now(java.time.ZoneOffset.UTC));
             long seconds = duration.getSeconds();
             if (seconds < 60) return "Just now";
             long minutes = seconds / 60;
@@ -107,6 +108,15 @@ public class Notification {
             return createdAt.format(DateTimeFormatter.ofPattern("dd MMM yyyy"));
         } catch (Exception e) {
             return "Recent";
+        }
+    }
+
+    public String getFormattedCreatedAt() {
+        if (createdAt == null) return "";
+        try {
+            return createdAt.format(DateTimeFormatter.ofPattern("dd MMM yyyy, hh:mm a"));
+        } catch (Exception e) {
+            return "";
         }
     }
 

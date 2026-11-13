@@ -1,106 +1,7 @@
 import React, { useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { formatTimeAgo } from '../../utils/timeAgo';
-
-const getModalConfig = (item) => {
-  const actionType = item?.actionType || '';
-  const type = item?.type || '';
-  const title = item?.title || '';
-
-  if (actionType === 'SHORTLIST_ADDED' || (title.includes('Shortlist') && !title.includes('Updated') && !title.includes('Removed'))) {
-    return {
-      heading: 'Application Shortlisted',
-      badgeClass: 'badge-success',
-      badgeText: 'SHORTLISTED',
-      icon: 'bi-star-fill',
-      iconColor: '#10b981',
-      iconBg: 'rgba(16, 185, 129, 0.15)',
-      actionPerformed: 'Candidate Shortlisted for Interview Stage',
-    };
-  }
-
-  if (actionType === 'SHORTLIST_REMOVED' || title.includes('Shortlist Status Updated') || title.includes('Removed from Shortlist')) {
-    return {
-      heading: 'Removed from Shortlist',
-      badgeClass: 'badge-warning',
-      badgeText: item.currentStatus || 'UNDER REVIEW',
-      icon: 'bi-dash-circle-fill',
-      iconColor: '#f59e0b',
-      iconBg: 'rgba(245, 158, 11, 0.15)',
-      actionPerformed: 'Candidate Removed from Shortlist',
-    };
-  }
-
-  if (actionType === 'INTERVIEW_RESCHEDULED' || title.includes('Rescheduled')) {
-    return {
-      heading: 'Interview Rescheduled',
-      badgeClass: 'badge-primary',
-      badgeText: 'RESCHEDULED',
-      icon: 'bi-calendar-range-fill',
-      iconColor: '#0284c7',
-      iconBg: 'rgba(14, 165, 233, 0.15)',
-      actionPerformed: 'Interview Round Rescheduled to Updated Slot',
-    };
-  }
-
-  if (actionType === 'INTERVIEW_CANCELLED' || title.includes('Interview Cancelled')) {
-    return {
-      heading: 'Interview Cancelled',
-      badgeClass: 'badge-danger',
-      badgeText: 'CANCELLED',
-      icon: 'bi-calendar-x-fill',
-      iconColor: '#ef4444',
-      iconBg: 'rgba(239, 68, 68, 0.15)',
-      actionPerformed: 'Scheduled Interview Cancelled by Recruitment Team',
-    };
-  }
-
-  if (actionType === 'INTERVIEW_SCHEDULED' || type === 'INTERVIEW' || title.includes('Interview Scheduled')) {
-    return {
-      heading: 'Interview Scheduled',
-      badgeClass: 'badge-primary',
-      badgeText: 'INTERVIEWING',
-      icon: 'bi-calendar2-check-fill',
-      iconColor: '#8b5cf6',
-      iconBg: 'rgba(139, 92, 246, 0.15)',
-      actionPerformed: 'Technical Interview Round Scheduled',
-    };
-  }
-
-  if (actionType === 'BULK_ANALYSIS_COMPLETED' || type === 'BULK_UPLOAD' || title.includes('Bulk')) {
-    return {
-      heading: 'Bulk Resume Screening Completed',
-      badgeClass: 'badge-primary',
-      badgeText: 'COMPLETED',
-      icon: 'bi-cloud-check-fill',
-      iconColor: 'var(--accent)',
-      iconBg: 'rgba(255, 121, 0, 0.15)',
-      actionPerformed: 'Batch AI Resume Screening & Matching',
-    };
-  }
-
-  if (actionType === 'JOB_PUBLISHED' || type === 'JOB_POSTING') {
-    return {
-      heading: 'New Job Opportunity Available',
-      badgeClass: 'badge-info',
-      badgeText: 'NEW OPENING',
-      icon: 'bi-briefcase-fill',
-      iconColor: '#6366f1',
-      iconBg: 'rgba(99, 102, 241, 0.15)',
-      actionPerformed: 'New Career Requisition Published',
-    };
-  }
-
-  return {
-    heading: 'Application Status Updated',
-    badgeClass: 'badge-primary',
-    badgeText: item?.currentStatus || 'STATUS UPDATED',
-    icon: 'bi-info-circle-fill',
-    iconColor: '#2563eb',
-    iconBg: 'rgba(37, 99, 235, 0.15)',
-    actionPerformed: 'Application Status Progressed in Recruitment Pipeline',
-  };
-};
+import { formatTimeAgo, formatNotificationTime } from '../../utils/timeAgo';
+import { formatNotificationDisplay } from '../../utils/notificationFormatter';
 
 const NotificationDetailModal = ({ notification, onClose }) => {
   useEffect(() => {
@@ -113,20 +14,16 @@ const NotificationDetailModal = ({ notification, onClose }) => {
 
   if (!notification) return null;
 
-  const config = getModalConfig(notification);
+  const display = formatNotificationDisplay(notification);
+  const timeInfo = formatNotificationTime(notification.createdAt);
 
-  const formattedDateTime = notification.createdAt
-    ? `${new Date(notification.createdAt).toLocaleString('en-US', {
-        dateStyle: 'medium',
-        timeStyle: 'short',
-      })} (${formatTimeAgo(notification.createdAt)})`
-    : 'Recent';
+  const formattedDateTime = `${timeInfo.exact} (${timeInfo.relative})`;
 
   const candidateName = notification.candidateName || 'Candidate';
   const jobTitle = notification.jobTitle || notification.title?.split(':')?.[1]?.trim() || 'Software Engineer';
   const applicationId = notification.relatedEntityId ? `#APP-${notification.relatedEntityId}` : `#NOTIF-${notification.id}`;
-  const previousStatus = notification.previousStatus || (config.heading === 'Removed from Shortlist' ? 'SHORTLISTED' : 'Under Review');
-  const currentStatus = notification.currentStatus || (config.heading === 'Application Shortlisted' ? 'SHORTLISTED' : 'Active');
+  const previousStatus = notification.previousStatus || (display.heading === 'Removed from Shortlist' ? 'SHORTLISTED' : 'Under Review');
+  const currentStatus = notification.currentStatus || display.badge.text;
   const updatedBy = notification.updatedBy || 'SmartHire Recruitment Team';
 
   return (
@@ -179,8 +76,8 @@ const NotificationDetailModal = ({ notification, onClose }) => {
                 width: '42px',
                 height: '42px',
                 borderRadius: '12px',
-                background: config.iconBg,
-                color: config.iconColor,
+                background: display.badge.bg,
+                color: display.badge.color,
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
@@ -188,22 +85,22 @@ const NotificationDetailModal = ({ notification, onClose }) => {
                 flexShrink: 0,
               }}
             >
-              <i className={`bi ${config.icon}`}></i>
+              <i className={`bi ${display.badge.icon}`}></i>
             </span>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <h2
                   style={{
-                    fontSize: '1.2rem',
+                    fontSize: '1.15rem',
                     fontWeight: 800,
                     margin: 0,
                     color: 'var(--text-primary, #0f172a)',
                   }}
                 >
-                  {config.heading}
+                  {display.heading}
                 </h2>
-                <span className={`badge ${config.badgeClass}`} style={{ fontSize: '0.72rem' }}>
-                  {config.badgeText}
+                <span className={`badge ${display.badge.badgeClass}`} style={{ fontSize: '0.72rem' }}>
+                  {display.badge.text}
                 </span>
               </div>
               <small style={{ color: 'var(--text-muted, #64748b)', fontSize: '0.8rem' }}>
@@ -234,11 +131,11 @@ const NotificationDetailModal = ({ notification, onClose }) => {
               marginBottom: '22px',
             }}
           >
-            <strong style={{ fontSize: '0.85rem', color: 'var(--text-primary)', display: 'block', marginBottom: '4px' }}>
-              Notification Message:
+            <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)', display: 'block', marginBottom: '6px', fontWeight: 700 }}>
+              {display.title}
             </strong>
             <p style={{ margin: 0, fontSize: '0.92rem', color: 'var(--text-secondary, #334155)', lineHeight: 1.55 }}>
-              {notification.message}
+              {display.message}
             </p>
           </div>
 
@@ -290,7 +187,17 @@ const NotificationDetailModal = ({ notification, onClose }) => {
               <small style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600 }}>
                 Current Status
               </small>
-              <span className={`badge ${config.badgeClass}`} style={{ fontSize: '0.75rem' }}>{currentStatus}</span>
+              <span className={`badge ${display.badge.badgeClass}`} style={{ fontSize: '0.75rem' }}>{currentStatus}</span>
+            </div>
+
+            <div style={{ padding: '12px 14px', borderRadius: '8px', background: 'var(--bg-secondary, #f8fafc)' }}>
+              <small style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600 }}>
+                Notification Timestamp
+              </small>
+              <strong style={{ color: 'var(--text-primary)', fontSize: '0.88rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <i className="bi bi-clock" style={{ color: 'var(--accent, #ff7900)' }}></i>
+                {timeInfo.exact}
+              </strong>
             </div>
 
             <div style={{ padding: '12px 14px', borderRadius: '8px', background: 'var(--bg-secondary, #f8fafc)', gridColumn: '1 / -1' }}>
@@ -298,7 +205,7 @@ const NotificationDetailModal = ({ notification, onClose }) => {
                 Action Performed
               </small>
               <span style={{ color: 'var(--text-primary)', fontWeight: 600, fontSize: '0.88rem' }}>
-                <i className="bi bi-arrow-right-short text-primary"></i> {config.actionPerformed}
+                <i className="bi bi-arrow-right-short text-primary"></i> {display.actionPerformed}
               </span>
             </div>
           </div>
@@ -354,6 +261,39 @@ const NotificationDetailModal = ({ notification, onClose }) => {
                   </span>
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Conditional: Interview Feedback Section */}
+          {(notification.type === 'FEEDBACK' || notification.actionType === 'INTERVIEW_FEEDBACK' || notification.recommendation) && (
+            <div
+              style={{
+                padding: '16px',
+                borderRadius: '12px',
+                background: 'rgba(14, 165, 233, 0.06)',
+                border: '1px solid rgba(14, 165, 233, 0.2)',
+                marginBottom: '20px',
+              }}
+            >
+              <h4 style={{ margin: '0 0 10px', fontSize: '0.94rem', fontWeight: 700, color: '#0284c7', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <i className="bi bi-clipboard-data-fill"></i> Interview Evaluation & Recommendation
+              </h4>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '10px' }}>
+                <div>
+                  <small style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem' }}>OUTCOME / RECOMMENDATION</small>
+                  <strong style={{ fontSize: '0.88rem', color: '#0ea5e9' }}>
+                    {notification.recommendation || 'Evaluation Recorded'}
+                  </strong>
+                </div>
+                {notification.feedbackScore != null && (
+                  <div>
+                    <small style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.72rem' }}>EVALUATION SCORE</small>
+                    <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)' }}>
+                      {notification.feedbackScore}%
+                    </strong>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

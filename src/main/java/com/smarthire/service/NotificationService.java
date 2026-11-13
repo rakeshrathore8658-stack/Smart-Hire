@@ -108,7 +108,7 @@ public class NotificationService {
                 .meetingLink(meetingLink)
                 .hrMessage(hrMessage)
                 .isRead(false)
-                .createdAt(LocalDateTime.now())
+                .createdAt(LocalDateTime.now(java.time.ZoneOffset.UTC))
                 .build();
 
         Notification saved = notificationRepository.save(notification);
