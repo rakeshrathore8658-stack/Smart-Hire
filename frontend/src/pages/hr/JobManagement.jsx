@@ -1,7 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import ConfirmPopover from '../../components/common/ConfirmPopover';
+import CustomSelect from '../../components/common/CustomSelect';
 
 const JobManagement = () => {
   const [jobs, setJobs] = useState([]);
@@ -10,8 +11,19 @@ const JobManagement = () => {
   const [editingJob, setEditingJob] = useState(null);
   const [deleteConfirm, setDeleteConfirm] = useState(null);
 
+  const user = useMemo(() => {
+    try {
+      return JSON.parse(sessionStorage.getItem('smarthire_user') || localStorage.getItem('smarthire_user') || '{}');
+    } catch (_) {
+      return {};
+    }
+  }, []);
+
+  const defaultCompany = user?.companyName?.trim() || 'SmartHire Technologies';
+
   // Form State
   const [title, setTitle] = useState('');
+  const [companyName, setCompanyName] = useState(defaultCompany);
   const [department, setDepartment] = useState('Engineering');
   const [employmentType, setEmploymentType] = useState('Full-time');
   const [openings, setOpenings] = useState(1);
@@ -22,6 +34,83 @@ const JobManagement = () => {
   const [description, setDescription] = useState('');
   const [requiredSkills, setRequiredSkills] = useState('');
   const [formError, setFormError] = useState('');
+
+  // Dynamic Departments State
+  const [departments, setDepartments] = useState([]);
+  const [loadingDepts, setLoadingDepts] = useState(true);
+  const [showAddCustom, setShowAddCustom] = useState(false);
+  const [customDeptInput, setCustomDeptInput] = useState('');
+  const [customDeptError, setCustomDeptError] = useState('');
+
+  const fetchDepartments = async () => {
+    setLoadingDepts(true);
+    let deptList = [];
+    try {
+      try {
+        const res = await api.get('/jobs/departments');
+        if (res.data) {
+          deptList = Array.isArray(res.data) ? res.data : (res.data.departments || []);
+        }
+      } catch (endpointErr) {
+        const jobsRes = await api.get('/jobs');
+        const jobs = jobsRes.data?.jobs || (Array.isArray(jobsRes.data) ? jobsRes.data : []);
+        deptList = Array.from(new Set(jobs.map((j) => j.department?.trim()).filter(Boolean)));
+      }
+
+      if (!deptList || deptList.length === 0) {
+        deptList = ['Engineering', 'Product & Design', 'Data Science & Analytics', 'DevOps & Cloud Infrastructure', 'Sales & Marketing'];
+      }
+
+      const unique = [];
+      const seen = new Set();
+      deptList.forEach((d) => {
+        if (d && !seen.has(d.toLowerCase())) {
+          seen.add(d.toLowerCase());
+          unique.push(d);
+        }
+      });
+      unique.sort((a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' }));
+      setDepartments(unique);
+      return unique;
+    } catch (err) {
+      const defaults = ['Engineering', 'Product & Design', 'Data Science & Analytics', 'DevOps & Cloud Infrastructure', 'Sales & Marketing'];
+      setDepartments(defaults);
+      return defaults;
+    } finally {
+      setLoadingDepts(false);
+    }
+  };
+
+  const handleAddCustomDept = async () => {
+    const trimmed = customDeptInput.trim();
+    if (!trimmed) {
+      setCustomDeptError('Please enter a valid department name.');
+      return;
+    }
+
+    const existing = departments.find(
+      (d) => d.toLowerCase() === trimmed.toLowerCase()
+    );
+
+    const deptToUse = existing || trimmed;
+
+    if (!existing) {
+      const updated = [...departments, deptToUse].sort((a, b) =>
+        a.localeCompare(b, undefined, { sensitivity: 'base' })
+      );
+      setDepartments(updated);
+
+      try {
+        await api.post('/jobs/departments', { name: deptToUse });
+      } catch (err) {
+      }
+    }
+
+    setDepartment(deptToUse);
+    setCustomDeptInput('');
+    setCustomDeptError('');
+    setShowAddCustom(false);
+  };
 
   const fetchJobs = async () => {
     try {
@@ -36,12 +125,14 @@ const JobManagement = () => {
 
   useEffect(() => {
     fetchJobs();
+    fetchDepartments();
   }, []);
 
   const openCreateModal = () => {
     setEditingJob(null);
     setTitle('');
-    setDepartment('Engineering');
+    setCompanyName(defaultCompany);
+    setDepartment(departments.length > 0 ? departments[0] : 'Engineering');
     setEmploymentType('Full-time');
     setOpenings(1);
     setMinExp(2);
@@ -51,13 +142,24 @@ const JobManagement = () => {
     setDescription('');
     setRequiredSkills('');
     setFormError('');
+    setShowAddCustom(false);
+    setCustomDeptInput('');
+    setCustomDeptError('');
     setModalOpen(true);
   };
 
   const openEditModal = (job) => {
     setEditingJob(job);
     setTitle(job.title || '');
-    setDepartment(job.department || 'Engineering');
+    setCompanyName(job.companyName || defaultCompany);
+    const currentDept = job.department || 'Engineering';
+    setDepartment(currentDept);
+    setDepartments((prev) => {
+      if (currentDept && !prev.some((d) => d.toLowerCase() === currentDept.toLowerCase())) {
+        return [currentDept, ...prev];
+      }
+      return prev;
+    });
     setEmploymentType(job.employmentType || 'Full-time');
     setOpenings(job.openings || 1);
     setMinExp(job.minExperience || 0);
@@ -67,6 +169,9 @@ const JobManagement = () => {
     setDescription(job.description || '');
     setRequiredSkills(job.requiredSkills || '');
     setFormError('');
+    setShowAddCustom(false);
+    setCustomDeptInput('');
+    setCustomDeptError('');
     setModalOpen(true);
   };
 
@@ -76,6 +181,7 @@ const JobManagement = () => {
 
     const payload = {
       title,
+      companyName: companyName.trim() || defaultCompany,
       department,
       employmentType,
       openings: parseInt(openings, 10),
@@ -109,6 +215,27 @@ const JobManagement = () => {
       console.error('Failed to delete job:', err);
     }
   };
+
+  const departmentOptions = useMemo(() => {
+    const opts = departments.map((d) => ({ value: d, label: d }));
+    if (department && !departments.some((d) => d.toLowerCase() === department.toLowerCase())) {
+      opts.unshift({ value: department, label: department });
+    }
+    opts.push({
+      value: '__ADD_NEW__',
+      label: '✨ + Add New Custom Department...',
+      badge: 'Custom',
+      icon: <i className="bi bi-plus-circle" style={{ color: 'var(--accent)' }}></i>,
+    });
+    return opts;
+  }, [departments, department]);
+
+  const employmentTypeOptions = [
+    { value: 'Full-time', label: 'Full-time' },
+    { value: 'Part-time', label: 'Part-time' },
+    { value: 'Contract', label: 'Contract' },
+    { value: 'Internship', label: 'Internship' },
+  ];
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
@@ -157,6 +284,7 @@ const JobManagement = () => {
                     <td style={{ padding: '16px 20px' }}>
                       <strong style={{ display: 'block', color: 'var(--text-primary)', fontSize: '0.94rem' }}>{job.title}</strong>
                       <small style={{ color: 'var(--text-muted)', fontSize: '0.76rem' }}>
+                        {job.companyName ? <span style={{ color: 'var(--accent)', fontWeight: 600 }}>{job.companyName} &bull; </span> : null}
                         {job.department} &bull; {job.location || 'Remote'}
                       </small>
                     </td>
@@ -241,7 +369,7 @@ const JobManagement = () => {
             <form onSubmit={handleSave}>
               <div style={{ marginBottom: '14px' }}>
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                  Job Title
+                  Job Title <span style={{ color: 'var(--danger)' }}>*</span>
                 </label>
                 <input
                   type="text"
@@ -254,35 +382,123 @@ const JobManagement = () => {
                 />
               </div>
 
+              <div style={{ marginBottom: '14px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                  <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                    Hiring Company / Organization <span style={{ color: 'var(--danger)' }}>*</span>
+                  </label>
+                  {defaultCompany && companyName !== defaultCompany && (
+                    <button
+                      type="button"
+                      onClick={() => setCompanyName(defaultCompany)}
+                      style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.72rem', textDecoration: 'underline', padding: 0 }}
+                    >
+                      Reset ({defaultCompany})
+                    </button>
+                  )}
+                </div>
+                <input
+                  type="text"
+                  required
+                  value={companyName}
+                  onChange={(e) => setCompanyName(e.target.value)}
+                  placeholder="e.g. Acme Corp, Tech Mahindra"
+                  className="form-control"
+                  style={{ width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-strong)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '0.88rem' }}
+                />
+                <small style={{ color: 'var(--text-muted)', fontSize: '0.72rem', marginTop: '4px', display: 'block' }}>
+                  Defaults to your HR company ({defaultCompany}), or specify client/other.
+                </small>
+              </div>
+
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 140px), 1fr))', gap: '12px', marginBottom: '14px' }}>
                 <div>
-                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
-                    Department
-                  </label>
-                  <input
-                    type="text"
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+                    <label style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', margin: 0 }}>
+                      Department <span style={{ color: 'var(--danger)' }}>*</span>
+                    </label>
+                    {!showAddCustom && (
+                      <button
+                        type="button"
+                        onClick={() => { setShowAddCustom(true); setCustomDeptError(''); }}
+                        style={{
+                          background: 'none',
+                          border: 'none',
+                          color: 'var(--primary)',
+                          cursor: 'pointer',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          padding: 0,
+                        }}
+                      >
+                        + Add Custom
+                      </button>
+                    )}
+                  </div>
+                  <CustomSelect
+                    id="modalJobDepartment"
                     value={department}
-                    onChange={(e) => setDepartment(e.target.value)}
-                    className="form-control"
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-strong)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '0.88rem' }}
+                    onChange={(val) => {
+                      if (val === '__ADD_NEW__') {
+                        setShowAddCustom(true);
+                        setCustomDeptInput('');
+                        setCustomDeptError('');
+                      } else {
+                        setDepartment(val);
+                      }
+                    }}
+                    options={departmentOptions}
+                    placeholder={loadingDepts ? 'Loading departments...' : 'Select Department'}
+                    searchable={departments.length > 4}
+                    disabled={loadingDepts}
                   />
+
+                  {showAddCustom ? (
+                    <div style={{ marginTop: '8px', padding: '10px', background: 'var(--bg-secondary, rgba(99, 102, 241, 0.05))', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)' }}>
+                      <div style={{ display: 'flex', gap: '6px', marginBottom: '4px' }}>
+                        <input
+                          type="text"
+                          className="form-control"
+                          placeholder="Department name"
+                          value={customDeptInput}
+                          onChange={(e) => { setCustomDeptInput(e.target.value); if (customDeptError) setCustomDeptError(''); }}
+                          onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleAddCustomDept(); } }}
+                          style={{ flex: 1, padding: '6px 10px', fontSize: '0.82rem' }}
+                          autoFocus
+                        />
+                        <button type="button" className="btn btn-primary" onClick={handleAddCustomDept} style={{ padding: '6px 10px', fontSize: '0.8rem' }}>
+                          Add
+                        </button>
+                        <button type="button" className="btn btn-secondary" onClick={() => setShowAddCustom(false)} style={{ padding: '6px 8px', fontSize: '0.8rem' }}>
+                          &times;
+                        </button>
+                      </div>
+                      {customDeptError && <small style={{ color: 'var(--danger)', fontSize: '0.72rem' }}>{customDeptError}</small>}
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: '4px', textAlign: 'right' }}>
+                      <button
+                        type="button"
+                        onClick={() => { setShowAddCustom(true); setCustomDeptError(''); }}
+                        style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.72rem', textDecoration: 'underline', padding: 0 }}
+                      >
+                        + Add Custom Department
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div>
                   <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
                     Employment Type
                   </label>
-                  <select
+                  <CustomSelect
+                    id="modalJobEmploymentType"
                     value={employmentType}
-                    onChange={(e) => setEmploymentType(e.target.value)}
-                    className="form-control"
-                    style={{ width: '100%', padding: '10px 14px', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-strong)', background: 'var(--bg-input)', color: 'var(--text-primary)', fontSize: '0.88rem' }}
-                  >
-                    <option value="Full-time">Full-time</option>
-                    <option value="Part-time">Part-time</option>
-                    <option value="Contract">Contract</option>
-                    <option value="Internship">Internship</option>
-                  </select>
+                    onChange={(val) => setEmploymentType(val)}
+                    options={employmentTypeOptions}
+                    placeholder="Select Employment Type"
+                  />
                 </div>
               </div>
 

@@ -66,6 +66,12 @@ public class CandidateComparisonController {
         try {
             CandidateCompareResponseDTO response = candidateComparisonService.compareCandidates(candidateIds);
             return ResponseEntity.ok(response);
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            log.warn("Access denied during candidate comparison: {}", ex.getMessage());
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "success", false,
+                    "message", ex.getMessage()
+            ));
         } catch (IllegalArgumentException ex) {
             log.warn("Validation error during candidate comparison: {}", ex.getMessage());
             return ResponseEntity.badRequest().body(Map.of(
@@ -101,6 +107,8 @@ public class CandidateComparisonController {
         try {
             CandidateCompareResponseDTO response = candidateComparisonService.compareCandidates(ids);
             return ResponseEntity.ok(response);
+        } catch (org.springframework.security.access.AccessDeniedException ex) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("success", false, "message", ex.getMessage()));
         } catch (IllegalArgumentException ex) {
             return ResponseEntity.badRequest().body(Map.of("success", false, "message", ex.getMessage()));
         } catch (Exception ex) {

@@ -1,10 +1,12 @@
 package com.smarthire.service;
 
 import com.smarthire.entity.Notification;
+import com.smarthire.event.NotificationDispatchEvent;
 import com.smarthire.repository.NotificationRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -19,6 +21,7 @@ import java.util.List;
 public class NotificationService {
 
     private final NotificationRepository notificationRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Autowired(required = false)
     private SimpMessagingTemplate messagingTemplate;
@@ -58,7 +61,8 @@ public class NotificationService {
     }
 
     /**
-     * Dispatch enriched real-time notification with full metadata context.
+     * Dispatch enriched real-time notification asynchronously via Spring ApplicationEvent.
+     * Evaluates user notification preferences before persisting or pushing.
      */
     @Transactional
     public Notification sendEnrichedNotification(
@@ -88,7 +92,7 @@ public class NotificationService {
 
         String normalizedEmail = userEmail.trim().toLowerCase();
 
-        Notification notification = Notification.builder()
+        NotificationDispatchEvent event = NotificationDispatchEvent.builder()
                 .userEmail(normalizedEmail)
                 .candidateName(candidateName)
                 .title(title)
@@ -107,29 +111,32 @@ public class NotificationService {
                 .interviewMode(interviewMode)
                 .meetingLink(meetingLink)
                 .hrMessage(hrMessage)
-                .isRead(false)
-                .createdAt(LocalDateTime.now(java.time.ZoneOffset.UTC))
                 .build();
 
-        Notification saved = notificationRepository.save(notification);
-        Long savedId = saved != null ? saved.getId() : null;
-        log.info("Notification dispatched [id={}] to user [{}] type=[{}]: {}",
-                savedId, normalizedEmail, type, title);
+        eventPublisher.publishEvent(event);
+        log.debug("Published NotificationDispatchEvent for user [{}] with title: {}", normalizedEmail, title);
 
-        // Real-time WebSocket push
-        if (messagingTemplate != null) {
-            try {
-                // Topic subscription pattern: /topic/notifications/{email}
-                messagingTemplate.convertAndSend("/topic/notifications/" + normalizedEmail, saved);
-                // User-directed queue pattern: /user/{email}/queue/notifications
-                messagingTemplate.convertAndSendToUser(normalizedEmail, "/queue/notifications", saved);
-                log.debug("Real-time WebSocket notification pushed to: {}", normalizedEmail);
-            } catch (Exception wsEx) {
-                log.warn("WebSocket notification push failed for [{}]: {}", normalizedEmail, wsEx.getMessage());
-            }
-        }
-
-        return saved != null ? saved : notification;
+        return Notification.builder()
+                .userEmail(normalizedEmail)
+                .candidateName(candidateName)
+                .title(title)
+                .message(message)
+                .type(type != null ? type : "SYSTEM")
+                .actionUrl(actionUrl != null ? actionUrl : "/dashboard")
+                .relatedEntityId(relatedEntityId)
+                .relatedEntityType(relatedEntityType)
+                .jobTitle(jobTitle)
+                .actionType(actionType)
+                .previousStatus(previousStatus)
+                .currentStatus(currentStatus)
+                .updatedBy(updatedBy)
+                .interviewDate(interviewDate)
+                .interviewTime(interviewTime)
+                .interviewMode(interviewMode)
+                .meetingLink(meetingLink)
+                .hrMessage(hrMessage)
+                .createdAt(LocalDateTime.now(java.time.ZoneOffset.UTC))
+                .build();
     }
 
     /**

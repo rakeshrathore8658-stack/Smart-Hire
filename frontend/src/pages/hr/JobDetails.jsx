@@ -130,6 +130,9 @@ export default function JobDetails() {
               {currentJob.status || 'Open'}
             </span>
             <span className="badge badge-primary">{currentJob.department || 'Engineering'}</span>
+            <span className="badge badge-secondary" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px', background: 'var(--bg-secondary)', border: '1px solid var(--border-color)', color: 'var(--text-secondary)' }}>
+              <i className="bi bi-building"></i> {currentJob.companyName || 'SmartHire Technologies'}
+            </span>
             <span style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>REQ-{currentJob.id}</span>
           </div>
           <h1 className="page-title">{currentJob.title}</h1>

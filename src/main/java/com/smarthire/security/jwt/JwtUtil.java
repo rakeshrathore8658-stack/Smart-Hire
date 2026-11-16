@@ -92,14 +92,38 @@ public class JwtUtil {
     }
 
     public String extractEmail(String token) {
+        Map<?, ?> claims = extractClaims(token);
+        return claims != null ? (String) claims.get("email") : null;
+    }
+
+    public Long extractUserId(String token) {
+        Map<?, ?> claims = extractClaims(token);
+        if (claims != null && claims.containsKey("id")) {
+            Object idVal = claims.get("id");
+            if (idVal instanceof Number num) {
+                return num.longValue();
+            } else if (idVal instanceof String str && !str.isBlank()) {
+                try {
+                    return Long.parseLong(str.trim());
+                } catch (NumberFormatException ignored) {}
+            }
+        }
+        return null;
+    }
+
+    public String extractRole(String token) {
+        Map<?, ?> claims = extractClaims(token);
+        return claims != null ? (String) claims.get("role") : null;
+    }
+
+    public Map<?, ?> extractClaims(String token) {
         try {
             if (token == null || token.isBlank()) return null;
             String clean = token.startsWith("Bearer ") ? token.substring(7) : token;
             String[] parts = clean.split("\\.");
             if (parts.length >= 2) {
                 String payloadJson = new String(Base64.getUrlDecoder().decode(parts[1]), StandardCharsets.UTF_8);
-                Map<?, ?> payload = objectMapper.readValue(payloadJson, Map.class);
-                return (String) payload.get("email");
+                return objectMapper.readValue(payloadJson, Map.class);
             }
         } catch (Exception ignored) {}
         return null;

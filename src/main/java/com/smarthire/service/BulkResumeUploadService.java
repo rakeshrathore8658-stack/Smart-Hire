@@ -216,8 +216,21 @@ public class BulkResumeUploadService {
                             .build();
                 }
 
-                if (authUser != null && resumeToSave.getUser() == null) {
-                    resumeToSave.setUser(authUser);
+                if (authUser != null) {
+                    if ("HR".equalsIgnoreCase(authUser.getRole()) || "RECRUITER".equalsIgnoreCase(authUser.getRole())) {
+                        resumeToSave.setRecruiter(authUser);
+                    } else if (resumeToSave.getUser() == null) {
+                        resumeToSave.setUser(authUser);
+                    }
+                }
+
+                // If candidate is a registered Job Seeker in the system, map user_id so they see their application
+                if (normEmail != null) {
+                    userRepository.findByEmail(normEmail).ifPresent(candUser -> {
+                        if (resumeToSave.getUser() == null) {
+                            resumeToSave.setUser(candUser);
+                        }
+                    });
                 }
 
                 Resume savedResume = resumeRepository.save(resumeToSave);

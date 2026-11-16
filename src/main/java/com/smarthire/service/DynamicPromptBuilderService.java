@@ -31,7 +31,10 @@ public class DynamicPromptBuilderService {
             String jobDescription,
             List<String> requiredSkills
     ) {
-        String safeResume = sanitize(resumeText != null ? resumeText : "");
+        String rawResume = sanitize(resumeText != null ? resumeText : "");
+        // Compact resume text representation to keep token ingestion fast (<1.5s on CPU)
+        String safeResume = rawResume.length() > 2500 ? rawResume.substring(0, 2500) + "... [Truncated for speed]" : rawResume;
+
         String safeSkills = candidateInfo != null && candidateInfo.getTechnicalSkills() != null && !candidateInfo.getTechnicalSkills().isEmpty()
                 ? String.join(", ", candidateInfo.getTechnicalSkills()) : "None explicitly detected";
         String safeExp = candidateInfo != null && candidateInfo.getTotalExperience() != null
@@ -45,39 +48,39 @@ public class DynamicPromptBuilderService {
 
         String safeRole = sanitize(targetJobRole != null && !targetJobRole.isBlank() ? targetJobRole : "Software Engineer");
         String safeJobDesc = sanitize(jobDescription != null && !jobDescription.isBlank() ? jobDescription : "Standard industry requirements for " + safeRole);
+        if (safeJobDesc.length() > 1000) {
+            safeJobDesc = safeJobDesc.substring(0, 1000) + "...";
+        }
         String safeRequiredSkills = (requiredSkills != null && !requiredSkills.isEmpty())
                 ? String.join(", ", requiredSkills)
                 : "Standard core competencies for " + safeRole;
 
         return """
                 =========================
-                RESUME TEXT TO EVALUATE:
+                RESUME EVIDENCE SUMMARY:
                 =========================
                 %s
 
-                =========================
-                PARSED CANDIDATE EVIDENCE:
-                =========================
-                - Detected Skills: %s
-                - Experience Summary: %s
-                - Academic Background: %s
+                - Extracted Skills: %s
+                - Experience: %s
+                - Education: %s
                 - Projects: %s
                 - Certifications: %s
 
                 =========================
-                TARGET JOB SPECIFICATIONS:
+                TARGET ROLE SPECIFICATION:
                 =========================
-                - Target Role: %s
-                - Required Competencies: %s
-                - Job Description:
-                %s
+                - Role: %s
+                - Required Skills: %s
+                - Description: %s
 
                 =========================
-                EVALUATION ASSIGNMENT:
+                EVALUATION INSTRUCTIONS:
                 =========================
-                Perform a rigorous ATS evaluation of this candidate for the target role.
-                Calculate all scores objectively based on actual alignment.
-                Output ONLY a single valid JSON object following this EXACT schema structure:
+                Perform a deep, advanced ATS scoring analysis of this resume against the target role.
+                Be realistic and evidence-based.
+                Keep all explanations and bullets concise (1 sentence each).
+                Output ONLY a single valid JSON object following this exact schema:
 
                 {
                   "overallScore": 82,
@@ -92,34 +95,34 @@ public class DynamicPromptBuilderService {
                     "contentQuality": 82
                   },
                   "skillsAnalysis": {
-                    "matchedSkills": ["<list skills from resume that genuinely match target role>"],
+                    "matchedSkills": ["skill1", "skill2"],
                     "missingSkills": [
-                      {"skill": "<missing required skill>", "priority": "HIGH", "reason": "<why needed>"},
-                      {"skill": "<another missing skill>", "priority": "MEDIUM", "reason": "<why needed>"}
+                      {"skill": "missing1", "priority": "HIGH", "reason": "Essential for role architecture"},
+                      {"skill": "missing2", "priority": "MEDIUM", "reason": "Recommended for workflow"}
                     ],
-                    "partialSkills": ["<skills with partial overlap>"]
+                    "partialSkills": ["skill3"]
                   },
                   "strengths": [
-                    "<Real strength 1 from resume with evidence>",
-                    "<Real strength 2 from resume with evidence>",
-                    "<Real strength 3 from resume with evidence>"
+                    "Solid hands-on foundation in core required technologies",
+                    "Demonstrated practical application in relevant projects",
+                    "Clear structured technical skill taxonomy"
                   ],
                   "weaknesses": [
-                    "<Real weakness or gap 1 for this target role>",
-                    "<Real weakness or gap 2 for this target role>"
+                    "Missing exposure to cloud deployment tools like AWS or Docker",
+                    "Limited measurable performance metrics in experience bullets"
                   ],
                   "recommendations": [
-                    "<Actionable recommendation 1 to boost candidate ATS score>",
-                    "<Actionable recommendation 2 regarding missing keywords or projects>",
-                    "<Actionable recommendation 3 regarding summary or presentation>"
+                    "Incorporate missing core keywords into project descriptions",
+                    "Quantify project achievements with percentages or user numbers",
+                    "Highlight cloud or CI/CD pipelines relevant to modern development"
                   ],
-                  "improvedSummary": "<AI-crafted concise 2-3 sentence executive professional summary for this candidate targeted at this role>",
-                  "suggestedKeywords": ["<5 to 8 specific industry keywords candidate should integrate>"],
+                  "improvedSummary": "Dedicated software professional with hands-on expertise in backend services, database design, and REST APIs. Proven capability to engineer maintainable solutions and optimize application workflows.",
+                  "suggestedKeywords": ["Microservices", "Docker", "AWS", "REST APIs", "CI/CD"],
                   "sectionAnalysis": [
                     "Contact Info: Complete and readable",
-                    "Skills Section: Specific assessment",
-                    "Experience Section: Specific assessment",
-                    "Education Section: Specific assessment"
+                    "Skills: High relevance to target role",
+                    "Experience: Demonstrated hands-on responsibilities",
+                    "Education: Aligned degree credentials"
                   ]
                 }
                 """.formatted(

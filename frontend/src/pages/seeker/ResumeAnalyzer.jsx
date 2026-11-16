@@ -116,7 +116,9 @@ const ResumeAnalyzer = () => {
   useEffect(() => {
     const activeProv = providers.find((p) => p.id === aiProvider);
     if (activeProv) {
-      if (activeProv.installedModels && activeProv.installedModels.length > 0) {
+      if (activeProv.recommendedModel && activeProv.installedModels?.includes(activeProv.recommendedModel)) {
+        setSelectedModel(activeProv.recommendedModel);
+      } else if (activeProv.installedModels && activeProv.installedModels.length > 0) {
         setSelectedModel(activeProv.installedModels[0]);
       } else if (activeProv.recommendedModel) {
         setSelectedModel(activeProv.recommendedModel);

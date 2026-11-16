@@ -33,23 +33,35 @@ public class LocalDeterministicAIProvider implements AIProvider {
         log.info("Running dynamic local NLP evaluation engine...");
         try {
             // 0. Extract Full Resume Text for Deep Semantic Extraction
-            String fullResumeText = extractVariable(prompt, "RESUME TEXT TO EVALUATE:\n=========================\n", "\n\n=========================\nPARSED CANDIDATE EVIDENCE:");
+            String fullResumeText = extractVariable(prompt, "RESUME EVIDENCE SUMMARY:\n=========================\n", "\n\n- Extracted Skills:");
+            if (fullResumeText.isBlank()) {
+                fullResumeText = extractVariable(prompt, "RESUME TEXT TO EVALUATE:\n=========================\n", "\n\n=========================\nPARSED CANDIDATE EVIDENCE:");
+            }
             if (fullResumeText.isBlank()) {
                 fullResumeText = prompt;
             }
             String lowerResume = fullResumeText.toLowerCase();
 
             // 1. Extract Target Role & Job Description
-            String targetJobRole = extractVariable(prompt, "- Target Role: ", "\n- Required Competencies:");
+            String targetJobRole = extractVariable(prompt, "- Role: ", "\n- Required Skills:");
+            if (targetJobRole.isBlank()) {
+                targetJobRole = extractVariable(prompt, "- Target Role: ", "\n- Required Competencies:");
+            }
             if (targetJobRole.isBlank()) {
                 targetJobRole = extractVariable(prompt, "TARGET JOB ROLE:\n", "\n\nJOB DESCRIPTION:");
             }
             if (targetJobRole.isBlank()) targetJobRole = "Software Engineer";
 
-            String jobDescRaw = extractVariable(prompt, "- Job Description:\n", "\n\n=========================");
+            String jobDescRaw = extractVariable(prompt, "- Description: ", "\n\n=========================");
+            if (jobDescRaw.isBlank()) {
+                jobDescRaw = extractVariable(prompt, "- Job Description:\n", "\n\n=========================");
+            }
 
             // 2. Extract Candidate Skills from Parsed Info & Full Text
-            String candidateSkillsRaw = extractVariable(prompt, "- Detected Skills: ", "\n- Experience Summary:");
+            String candidateSkillsRaw = extractVariable(prompt, "- Extracted Skills: ", "\n- Experience:");
+            if (candidateSkillsRaw.isBlank()) {
+                candidateSkillsRaw = extractVariable(prompt, "- Detected Skills: ", "\n- Experience Summary:");
+            }
             if (candidateSkillsRaw.isBlank()) {
                 candidateSkillsRaw = extractVariable(prompt, "Skills: ", "\nExperience:");
             }
@@ -73,8 +85,12 @@ public class LocalDeterministicAIProvider implements AIProvider {
             }
 
             // 3. Extract Experience, Education, Projects from Prompt
-            String expRaw = extractVariable(prompt, "- Experience Summary: ", "\n- Academic Background:");
-            String eduRaw = extractVariable(prompt, "- Academic Background: ", "\n- Projects:");
+            String expRaw = extractVariable(prompt, "- Experience: ", "\n- Education:");
+            if (expRaw.isBlank()) expRaw = extractVariable(prompt, "- Experience Summary: ", "\n- Academic Background:");
+
+            String eduRaw = extractVariable(prompt, "- Education: ", "\n- Projects:");
+            if (eduRaw.isBlank()) eduRaw = extractVariable(prompt, "- Academic Background: ", "\n- Projects:");
+
             String projRaw = extractVariable(prompt, "- Projects: ", "\n- Certifications:");
             String certsRaw = extractVariable(prompt, "- Certifications: ", "\n\n=========================");
 

@@ -96,7 +96,6 @@ public class AnalysisController {
     /**
      * Executes AI ATS analysis from JSON request body.
      */
-    @Transactional
     @PostMapping(value = {"/analyze", "/api/resume/analyze"}, consumes = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<?> analyzeResumeJson(@RequestBody ResumeAnalyzeRequestDTO request) {
         if (request == null || request.getResumeId() == null) {
@@ -144,7 +143,6 @@ public class AnalysisController {
     /**
      * Executes AI ATS analysis from Multipart form data (file upload + job parameters).
      */
-    @Transactional
     @PostMapping(value = {"/analyze", "/api/resume/analyze"}, consumes = MediaType.MULTIPART_FORM_DATA_VALUE)
     public ResponseEntity<?> analyzeResumeMultipart(
             @RequestParam(value = "resumeFile", required = false) MultipartFile resumeFile,
@@ -300,9 +298,22 @@ public class AnalysisController {
                             .build();
                 }
 
-                // Associate user if authenticated
+                // Associate recruiter or user based on authenticated role
                 if (currentUser != null) {
-                    resumeToSave.setUser(currentUser);
+                    if ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole())) {
+                        resumeToSave.setRecruiter(currentUser);
+                    } else {
+                        resumeToSave.setUser(currentUser);
+                    }
+                }
+
+                // If candidate email matches a registered Job Seeker, also link user_id
+                if (normEmail != null) {
+                    userRepository.findByEmail(normEmail).ifPresent(candUser -> {
+                        if (resumeToSave.getUser() == null) {
+                            resumeToSave.setUser(candUser);
+                        }
+                    });
                 }
 
                 Resume savedResume = resumeRepository.save(resumeToSave);

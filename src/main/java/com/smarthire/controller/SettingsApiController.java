@@ -1,7 +1,10 @@
 package com.smarthire.controller;
 
+import com.smarthire.entity.NotificationPreference;
 import com.smarthire.entity.User;
+import com.smarthire.repository.NotificationPreferenceRepository;
 import com.smarthire.repository.UserRepository;
+import com.smarthire.security.SecurityUtils;
 import jakarta.servlet.http.HttpSession;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,64 +28,26 @@ import java.util.Map;
 public class SettingsApiController {
 
     private final UserRepository userRepository;
+    private final NotificationPreferenceRepository notificationPreferenceRepository;
     private final PasswordEncoder passwordEncoder;
     private final com.smarthire.security.jwt.JwtUtil jwtUtil;
 
     private User getAuthenticatedUser() {
-        String email = null;
-        try {
-            ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
-            if (attrs != null && attrs.getRequest() != null) {
-                jakarta.servlet.http.HttpServletRequest req = attrs.getRequest();
-
-                // 1. Extract from X-User-Email custom header (explicit active account from frontend request)
-                String h = req.getHeader("X-User-Email");
-                if (h != null && !h.isBlank()) {
-                    email = h.trim().toLowerCase();
+        return SecurityUtils.getCurrentUser(userRepository).orElseGet(() -> {
+            String email = null;
+            try {
+                ServletRequestAttributes attrs = (ServletRequestAttributes) RequestContextHolder.getRequestAttributes();
+                if (attrs != null && attrs.getRequest() != null) {
+                    jakarta.servlet.http.HttpServletRequest req = attrs.getRequest();
+                    String h = req.getHeader("X-User-Email");
+                    if (h != null && !h.isBlank()) email = h.trim().toLowerCase();
                 }
-
-                // 2. Extract from Authorization Bearer JWT Token
-                if (email == null || email.isBlank()) {
-                    String authHeader = req.getHeader("Authorization");
-                    if (authHeader != null && authHeader.startsWith("Bearer ")) {
-                        String token = authHeader.substring(7).trim();
-                        try {
-                            if (jwtUtil.validateToken(token)) {
-                                email = jwtUtil.extractEmail(token);
-                            }
-                        } catch (Exception ignored) {}
-                    }
-                }
-
-                // 3. Extract from cookies
-                if ((email == null || email.isBlank()) && req.getCookies() != null) {
-                    for (jakarta.servlet.http.Cookie c : req.getCookies()) {
-                        if ("smarthire_user_email".equals(c.getName()) && c.getValue() != null && !c.getValue().isBlank()) {
-                            email = c.getValue().trim().toLowerCase();
-                            break;
-                        }
-                    }
-                }
-
-                // 4. Extract from Spring Security Authentication
-                if (email == null || email.isBlank()) {
-                    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-                    if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
-                        email = auth.getName();
-                    }
-                }
-
-                // 5. Extract from Session
-                if ((email == null || email.isBlank()) && req.getSession(false) != null) {
-                    email = (String) req.getSession(false).getAttribute("userEmail");
-                }
+            } catch (Exception ignored) {}
+            if (email != null && !email.isBlank()) {
+                return userRepository.findByEmail(email.trim().toLowerCase()).orElse(null);
             }
-        } catch (Exception ignored) {}
-
-        if (email != null && !email.isBlank()) {
-            return userRepository.findByEmail(email.trim().toLowerCase()).orElse(null);
-        }
-        return null;
+            return null;
+        });
     }
 
     @GetMapping
@@ -134,6 +99,30 @@ public class SettingsApiController {
         }
 
         userRepository.save(user);
+
+        // Synchronize with NotificationPreference table
+        try {
+            NotificationPreference pref = notificationPreferenceRepository
+                    .findByUserEmailIgnoreCase(user.getEmail())
+                    .orElse(null);
+            if (pref == null) {
+                pref = NotificationPreference.builder()
+                        .user(user)
+                        .userEmail(user.getEmail())
+                        .build();
+            }
+            pref.setUser(user);
+            pref.setUserEmail(user.getEmail());
+            pref.setResumeScanAlerts(Boolean.TRUE.equals(user.isNotifResumeScan()));
+            pref.setJobRoleInsights(Boolean.TRUE.equals(user.isNotifJobInsights()));
+            pref.setInterviewUpdates(Boolean.TRUE.equals(user.isNotifInterviewUpdates()));
+            if (body != null && body.containsKey("applicationStatusAlerts")) {
+                pref.setApplicationStatusAlerts(Boolean.parseBoolean(String.valueOf(body.get("applicationStatusAlerts"))));
+            }
+            notificationPreferenceRepository.save(pref);
+        } catch (Exception ex) {
+            log.warn("Could not sync NotificationPreference for user {}: {}", user.getEmail(), ex.getMessage());
+        }
 
         return ResponseEntity.ok(Map.of(
                 "success", true,
@@ -231,6 +220,30 @@ public class SettingsApiController {
 
         userRepository.save(user);
 
+        // Synchronize with NotificationPreference table
+        try {
+            NotificationPreference pref = notificationPreferenceRepository
+                    .findByUserEmailIgnoreCase(user.getEmail())
+                    .orElse(null);
+            if (pref == null) {
+                pref = NotificationPreference.builder()
+                        .user(user)
+                        .userEmail(user.getEmail())
+                        .build();
+            }
+            pref.setUser(user);
+            pref.setUserEmail(user.getEmail());
+            pref.setResumeScanAlerts(Boolean.TRUE.equals(user.isNotifResumeScan()));
+            pref.setJobRoleInsights(Boolean.TRUE.equals(user.isNotifJobInsights()));
+            pref.setInterviewUpdates(Boolean.TRUE.equals(user.isNotifInterviewUpdates()));
+            if (body != null && body.containsKey("applicationStatusAlerts")) {
+                pref.setApplicationStatusAlerts(Boolean.parseBoolean(String.valueOf(body.get("applicationStatusAlerts"))));
+            }
+            notificationPreferenceRepository.save(pref);
+        } catch (Exception ex) {
+            log.warn("Could not sync NotificationPreference for user {}: {}", user.getEmail(), ex.getMessage());
+        }
+
         return ResponseEntity.ok(Map.of(
                 "success", true,
                 "message", "Profile updated successfully.",
@@ -295,6 +308,30 @@ public class SettingsApiController {
         }
 
         userRepository.save(user);
+
+        // Synchronize with NotificationPreference table
+        try {
+            NotificationPreference pref = notificationPreferenceRepository
+                    .findByUserEmailIgnoreCase(user.getEmail())
+                    .orElse(null);
+            if (pref == null) {
+                pref = NotificationPreference.builder()
+                        .user(user)
+                        .userEmail(user.getEmail())
+                        .build();
+            }
+            pref.setUser(user);
+            pref.setUserEmail(user.getEmail());
+            pref.setResumeScanAlerts(Boolean.TRUE.equals(user.isNotifResumeScan()));
+            pref.setJobRoleInsights(Boolean.TRUE.equals(user.isNotifJobInsights()));
+            pref.setInterviewUpdates(Boolean.TRUE.equals(user.isNotifInterviewUpdates()));
+            if (body != null && body.containsKey("applicationStatusAlerts")) {
+                pref.setApplicationStatusAlerts(Boolean.parseBoolean(String.valueOf(body.get("applicationStatusAlerts"))));
+            }
+            notificationPreferenceRepository.save(pref);
+        } catch (Exception ex) {
+            log.warn("Could not sync NotificationPreference for user {}: {}", user.getEmail(), ex.getMessage());
+        }
 
         // Update SecurityContext with new ROLE authority
         org.springframework.security.core.authority.SimpleGrantedAuthority authority =

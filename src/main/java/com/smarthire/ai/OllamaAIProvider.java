@@ -68,19 +68,22 @@ public class OllamaAIProvider implements AIProvider {
             requestBody.put("system", systemInstruction);
             requestBody.put("format", "json");
             requestBody.put("stream", false);
+            // Disable reasoning thought loops (e.g. Qwen3/DeepSeek) to prevent minutes of delay
+            requestBody.put("think", false);
 
             // Optimization options for local inference: prevent endless rambling and speed up generation
             Map<String, Object> options = new HashMap<>();
             options.put("temperature", 0.1);
-            options.put("top_p", 0.85);
-            options.put("num_predict", 2048);
-            options.put("num_ctx", 8192);
+            options.put("top_p", 0.9);
+            options.put("num_predict", 650);
+            options.put("num_ctx", 2048);
             requestBody.put("options", options);
 
             String jsonPayload = objectMapper.writeValueAsString(requestBody);
-            int timeoutSec = Math.max(240, config.getOllama().getTimeoutSeconds());
+            // Maximum wait of 45 seconds to prevent browser timeouts or minutes of waiting
+            int timeoutSec = Math.min(45, Math.max(25, config.getOllama().getTimeoutSeconds()));
 
-            log.info("Sending resume analysis request to Ollama (model: {}, timeout: {}s)", effectiveModel, timeoutSec);
+            log.info("Sending fast resume analysis request to Ollama (model: {}, timeout: {}s)", effectiveModel, timeoutSec);
 
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(uri)

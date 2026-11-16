@@ -1,38 +1,141 @@
 package com.smarthire.service;
 
+import com.smarthire.entity.Department;
 import com.smarthire.entity.Job;
+import com.smarthire.repository.DepartmentRepository;
 import com.smarthire.repository.JobRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.List;
-import java.util.Optional;
+import java.util.*;
 
 @Service
 public class JobService {
 
     private final JobRepository jobRepository;
+    private final DepartmentRepository departmentRepository;
 
-    public JobService(JobRepository jobRepository) {
+    public JobService(JobRepository jobRepository, DepartmentRepository departmentRepository) {
         this.jobRepository = jobRepository;
+        this.departmentRepository = departmentRepository;
     }
 
     public List<Job> getAllJobs() {
         return jobRepository.findAllByOrderByCreatedAtDesc();
     }
 
+    public List<Job> getJobsForUser(com.smarthire.entity.User user) {
+        if (user != null && ("HR".equalsIgnoreCase(user.getRole()) || "RECRUITER".equalsIgnoreCase(user.getRole()))) {
+            return jobRepository.findByRecruiterIdOrUnassignedOrderByCreatedAtDesc(user.getId());
+        }
+        return jobRepository.findByStatusOrderByCreatedAtDesc("Open");
+    }
+
+    public List<Job> getJobsByRecruiter(Long recruiterId) {
+        if (recruiterId == null) {
+            return jobRepository.findAllByOrderByCreatedAtDesc();
+        }
+        return jobRepository.findByRecruiterIdOrUnassignedOrderByCreatedAtDesc(recruiterId);
+    }
+
     public Optional<Job> getJobById(Long id) {
         return jobRepository.findById(id);
     }
 
+    public Optional<Job> getJobByIdAndRecruiter(Long id, Long recruiterId) {
+        if (recruiterId == null) return jobRepository.findById(id);
+        return jobRepository.findById(id).filter(j -> j.getRecruiter() == null || recruiterId.equals(j.getRecruiter().getId()));
+    }
+
     @Transactional
     public Job saveJob(Job job) {
+        if (job.getDepartment() != null && !job.getDepartment().isBlank()) {
+            ensureDepartmentExists(job.getDepartment());
+        }
         return jobRepository.save(job);
+    }
+
+    @Transactional
+    public Job saveJob(Job job, com.smarthire.entity.User recruiter) {
+        if (recruiter != null && job.getRecruiter() == null) {
+            job.setRecruiter(recruiter);
+        }
+        return saveJob(job);
     }
 
     @Transactional
     public void deleteJob(Long id) {
         jobRepository.deleteById(id);
+    }
+
+    @Transactional(readOnly = true)
+    public List<String> getAllDepartments() {
+        Set<String> resultSet = new LinkedHashSet<>();
+
+        // 1. Load from Department table
+        try {
+            List<Department> savedDepts = departmentRepository.findAllByOrderByNameAsc();
+            for (Department d : savedDepts) {
+                if (d.getName() != null && !d.getName().isBlank()) {
+                    resultSet.add(d.getName().trim());
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 2. Load distinct from Job table
+        try {
+            List<String> jobDepts = jobRepository.findDistinctDepartments();
+            for (String jd : jobDepts) {
+                if (jd != null && !jd.isBlank()) {
+                    resultSet.add(jd.trim());
+                }
+            }
+        } catch (Exception ignored) {
+        }
+
+        // 3. Fallback defaults if completely empty
+        if (resultSet.isEmpty()) {
+            List<String> defaults = List.of(
+                    "Engineering",
+                    "Product & Design",
+                    "Data Science & Analytics",
+                    "DevOps & Cloud Infrastructure",
+                    "Sales & Marketing"
+            );
+            for (String def : defaults) {
+                resultSet.add(def);
+                ensureDepartmentExists(def);
+            }
+        }
+
+        List<String> sorted = new ArrayList<>(resultSet);
+        sorted.sort(String.CASE_INSENSITIVE_ORDER);
+        return sorted;
+    }
+
+    @Transactional
+    public Department addDepartment(String name) {
+        if (name == null || name.trim().isBlank()) {
+            throw new IllegalArgumentException("Department name cannot be empty");
+        }
+        String cleanName = name.trim();
+        return departmentRepository.findByNameIgnoreCase(cleanName)
+                .orElseGet(() -> departmentRepository.save(Department.builder()
+                        .name(cleanName)
+                        .build()));
+    }
+
+    @Transactional
+    public void ensureDepartmentExists(String name) {
+        if (name == null || name.trim().isBlank()) return;
+        String cleanName = name.trim();
+        try {
+            if (!departmentRepository.existsByNameIgnoreCase(cleanName)) {
+                departmentRepository.save(Department.builder().name(cleanName).build());
+            }
+        } catch (Exception ignored) {
+        }
     }
 
     @Transactional

@@ -18,12 +18,14 @@ import static org.mockito.ArgumentMatchers.eq;
 class NotificationSystemTest {
 
     private NotificationRepository notificationRepository;
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
     private NotificationService notificationService;
 
     @BeforeEach
     void setUp() {
         notificationRepository = Mockito.mock(NotificationRepository.class);
-        notificationService = new NotificationService(notificationRepository);
+        eventPublisher = Mockito.mock(org.springframework.context.ApplicationEventPublisher.class);
+        notificationService = new NotificationService(notificationRepository, eventPublisher);
         Mockito.when(notificationRepository.save(any(Notification.class)))
                 .thenAnswer(invocation -> {
                     Notification n = invocation.getArgument(0);

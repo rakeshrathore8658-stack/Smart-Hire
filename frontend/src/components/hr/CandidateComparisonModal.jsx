@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import SkeletonLoader from '../common/SkeletonLoader';
+import CustomSelect from '../common/CustomSelect';
 
 /**
  * CandidateComparisonModal
@@ -1159,18 +1160,19 @@ export default function CandidateComparisonModal({ candidateIds, onClose, onRemo
                 <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px' }}>
                   Interview Round *
                 </label>
-                <select
-                  className="form-control"
+                <CustomSelect
+                  id="modalInterviewRound"
                   value={scheduleForm.interviewRound}
-                  onChange={(e) => setScheduleForm({ ...scheduleForm, interviewRound: e.target.value })}
-                  required
-                >
-                  <option value="Technical Round 1">Technical Round 1 (DSA &amp; Core Concepts)</option>
-                  <option value="Technical Round 2">Technical Round 2 (System Design &amp; Architecture)</option>
-                  <option value="Coding Demonstration">Hands-on Live Coding Demonstration</option>
-                  <option value="HR &amp; Culture Fit">HR &amp; Cultural Alignment Round</option>
-                  <option value="Final Managerial Round">Final Managerial &amp; Leadership Round</option>
-                </select>
+                  onChange={(val) => setScheduleForm({ ...scheduleForm, interviewRound: val })}
+                  options={[
+                    { value: 'Technical Round 1', label: 'Technical Round 1 (DSA & Core Concepts)' },
+                    { value: 'Technical Round 2', label: 'Technical Round 2 (System Design & Architecture)' },
+                    { value: 'Coding Demonstration', label: 'Hands-on Live Coding Demonstration' },
+                    { value: 'HR & Culture Fit', label: 'HR & Cultural Alignment Round' },
+                    { value: 'Final Managerial Round', label: 'Final Managerial & Leadership Round' },
+                  ]}
+                  placeholder="Select Interview Round"
+                />
               </div>
 
               {/* Date & Time */}
@@ -1246,15 +1248,17 @@ export default function CandidateComparisonModal({ candidateIds, onClose, onRemo
                     <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px' }}>
                       Meeting Platform
                     </label>
-                    <select
-                      className="form-control"
+                    <CustomSelect
+                      id="modalMeetingPlatform"
                       value={scheduleForm.meetingPlatform}
-                      onChange={(e) => setScheduleForm({ ...scheduleForm, meetingPlatform: e.target.value })}
-                    >
-                      <option value="Google Meet">Google Meet</option>
-                      <option value="Zoom">Zoom Video</option>
-                      <option value="Microsoft Teams">Microsoft Teams</option>
-                    </select>
+                      onChange={(val) => setScheduleForm({ ...scheduleForm, meetingPlatform: val })}
+                      options={[
+                        { value: 'Google Meet', label: 'Google Meet' },
+                        { value: 'Zoom', label: 'Zoom Video' },
+                        { value: 'Microsoft Teams', label: 'Microsoft Teams' },
+                      ]}
+                      placeholder="Select Meeting Platform"
+                    />
                   </div>
 
                   <div className="form-group">

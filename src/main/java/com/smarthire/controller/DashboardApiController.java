@@ -169,17 +169,23 @@ public class DashboardApiController {
         List<ResumeAnalysis> allAnalyses = resumeAnalysisRepository.findAllByOrderByCreatedAtDesc();
 
         if ("HR".equalsIgnoreCase(role)) {
-            List<Job> jobs = jobService.getAllJobs();
+            Long hrId = user != null ? user.getId() : null;
+            List<Job> jobs = (hrId != null) ? jobService.getJobsByRecruiter(hrId) : jobService.getAllJobs();
             long openJobs = jobs.stream().filter(j -> "Open".equalsIgnoreCase(j.getStatus())).count();
-            int totalApplications = allAnalyses.size();
-            long shortlistedCount = allAnalyses.stream().filter(ra -> ra.isShortlisted() || "Shortlisted".equalsIgnoreCase(ra.getStage())).count();
-            long interviewCount = allAnalyses.stream().filter(ra -> "Interviewing".equalsIgnoreCase(ra.getStage()) || "Interview".equalsIgnoreCase(ra.getStage())).count();
-            long offeredCount = allAnalyses.stream().filter(ra -> "Offered".equalsIgnoreCase(ra.getStage())).count();
-            long hiredCount = allAnalyses.stream().filter(ra -> "Hired".equalsIgnoreCase(ra.getStage())).count();
+
+            List<ResumeAnalysis> hrAnalyses = (hrId != null)
+                    ? resumeAnalysisRepository.findActiveCandidatesByRecruiter(hrId)
+                    : allAnalyses;
+
+            int totalApplications = hrAnalyses.size();
+            long shortlistedCount = hrAnalyses.stream().filter(ra -> ra.isShortlisted() || "Shortlisted".equalsIgnoreCase(ra.getStage())).count();
+            long interviewCount = hrAnalyses.stream().filter(ra -> "Interviewing".equalsIgnoreCase(ra.getStage()) || "Interview".equalsIgnoreCase(ra.getStage())).count();
+            long offeredCount = hrAnalyses.stream().filter(ra -> "Offered".equalsIgnoreCase(ra.getStage())).count();
+            long hiredCount = hrAnalyses.stream().filter(ra -> "Hired".equalsIgnoreCase(ra.getStage())).count();
 
             // Unique candidates
             Set<String> uniqueCandidates = new HashSet<>();
-            for (ResumeAnalysis ra : allAnalyses) {
+            for (ResumeAnalysis ra : hrAnalyses) {
                 if (ra.getCandidateEmail() != null && !ra.getCandidateEmail().isBlank()) {
                     uniqueCandidates.add(ra.getCandidateEmail().toLowerCase());
                 }
@@ -190,12 +196,12 @@ public class DashboardApiController {
             hrStats.put("openJobs", openJobs);
             hrStats.put("totalCandidates", uniqueCandidates.size());
             hrStats.put("totalApplications", totalApplications);
-            hrStats.put("underReviewCount", allAnalyses.stream().filter(ra -> "Under Review".equalsIgnoreCase(ra.getStage()) || ra.getStage() == null).count());
+            hrStats.put("underReviewCount", hrAnalyses.stream().filter(ra -> "Under Review".equalsIgnoreCase(ra.getStage()) || ra.getStage() == null).count());
             hrStats.put("shortlistedCount", shortlistedCount);
             hrStats.put("interviewCount", interviewCount);
             hrStats.put("offeredCount", offeredCount);
             hrStats.put("hiredCount", hiredCount);
-            hrStats.put("recentApplications", allAnalyses.stream().limit(6).map(this::mapAnalysis).toList());
+            hrStats.put("recentApplications", hrAnalyses.stream().limit(6).map(this::mapAnalysis).toList());
 
             return ResponseEntity.ok(Map.of("role", "HR", "stats", hrStats));
         }
@@ -245,8 +251,8 @@ public class DashboardApiController {
         User user = resolveUser(emailParam, headerEmail);
         List<ResumeAnalysis> list;
         if (user != null && ("HR".equalsIgnoreCase(user.getRole()) || "RECRUITER".equalsIgnoreCase(user.getRole()))) {
-            // HR sees all applications/analyses across the recruitment portal
-            list = resumeAnalysisRepository.findAllByOrderByCreatedAtDesc();
+            // HR sees ONLY their own scanned / managed candidate applications
+            list = resumeAnalysisRepository.findActiveCandidatesByRecruiter(user.getId());
         } else if (user != null) {
             // Job Seeker sees ONLY their own analysis history!
             list = resumeAnalysisRepository.findAllForUser(user.getId(), user.getEmail());
@@ -273,9 +279,18 @@ public class DashboardApiController {
             String candName = analysis.getCandidateName() != null ? analysis.getCandidateName() : "Candidate";
             String role = analysis.getTargetJobRole() != null ? analysis.getTargetJobRole() : "Role";
 
-            // Authorization check: Job seeker can only delete their own analysis
             User currentUser = getAuthenticatedUser();
-            if (currentUser != null && !"HR".equalsIgnoreCase(currentUser.getRole()) && !"RECRUITER".equalsIgnoreCase(currentUser.getRole())) {
+            boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
+
+            // Authorization check: HR A cannot delete HR B's candidate; Job seeker can only delete their own
+            if (isHr) {
+                if (analysis.getRecruiter() != null && currentUser != null && !analysis.getRecruiter().getId().equals(currentUser.getId())) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                            "success", false,
+                            "message", "Access denied: You do not have permission to delete candidate records managed by another recruiter."
+                    ));
+                }
+            } else if (currentUser != null) {
                 boolean isOwner = (analysis.getUser() != null && analysis.getUser().getId().equals(currentUser.getId()))
                         || (analysis.getResume() != null && analysis.getResume().getUser() != null && analysis.getResume().getUser().getId().equals(currentUser.getId()))
                         || (analysis.getCandidateEmail() != null && analysis.getCandidateEmail().equalsIgnoreCase(currentUser.getEmail()))
@@ -324,7 +339,6 @@ public class DashboardApiController {
             }
 
             // If an HR / Recruiter deletes a candidate's resume, notify the candidate with dynamic message and HR name
-            boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
             if (isHr) {
                 String hrName = (currentUser.getFullName() != null && !currentUser.getFullName().isBlank())
                         ? currentUser.getFullName()
@@ -446,11 +460,18 @@ public class DashboardApiController {
 
     @GetMapping("/applications")
     public ResponseEntity<?> getApplications(@RequestParam(value = "stage", required = false) String stage) {
+        User currentUser = getAuthenticatedUser();
+        boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
+        if (!isHr) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Access denied: Recruiter portal access required."));
+        }
+
+        Long hrId = currentUser.getId();
         List<ResumeAnalysis> list;
         if ("archived".equalsIgnoreCase(stage)) {
-            list = resumeAnalysisRepository.findArchivedCandidates();
+            list = resumeAnalysisRepository.findArchivedCandidatesByRecruiter(hrId);
         } else {
-            list = resumeAnalysisRepository.findActiveCandidates();
+            list = resumeAnalysisRepository.findActiveCandidatesByRecruiter(hrId);
             if (stage != null && !stage.isBlank() && !"all".equalsIgnoreCase(stage)) {
                 String target = stage.trim().toLowerCase();
                 list = list.stream().filter(ra -> {
@@ -470,13 +491,20 @@ public class DashboardApiController {
 
     @GetMapping({"/candidates/archived", "/candidates/recently-deleted"})
     public ResponseEntity<?> getArchivedCandidates() {
-        List<ResumeAnalysis> list = resumeAnalysisRepository.findArchivedCandidates();
+        User currentUser = getAuthenticatedUser();
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+        List<ResumeAnalysis> list = resumeAnalysisRepository.findArchivedCandidatesByRecruiter(currentUser.getId());
         return ResponseEntity.ok(list.stream().map(this::mapAnalysis).toList());
     }
 
     @PostMapping(value = {"/candidates/{id:[0-9]+}/unarchive", "/candidates/{id:[0-9]+}/restore"})
     @org.springframework.transaction.annotation.Transactional
     public ResponseEntity<?> unarchiveCandidate(@PathVariable("id") Long id) {
+        User currentUser = getAuthenticatedUser();
+        boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
+
         Optional<ResumeAnalysis> analysisOpt = resumeAnalysisRepository.findById(id);
         if (analysisOpt.isEmpty()) {
             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
@@ -486,6 +514,15 @@ public class DashboardApiController {
         }
 
         ResumeAnalysis analysis = analysisOpt.get();
+
+        // RBAC: HR A cannot unarchive HR B's candidate
+        if (isHr && analysis.getRecruiter() != null && currentUser != null && !analysis.getRecruiter().getId().equals(currentUser.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "success", false,
+                    "message", "Access denied: You cannot restore candidate records managed by another recruiter."
+            ));
+        }
+
         analysis.setIsArchived(false);
         analysis.setArchivedAt(null);
         analysis.setStage("Under Review");
@@ -517,12 +554,21 @@ public class DashboardApiController {
 
     @PatchMapping("/applications/{id}/stage")
     public ResponseEntity<?> updateApplicationStage(@PathVariable("id") Long id, @RequestBody Map<String, String> body) {
+        User currentUser = getAuthenticatedUser();
+        boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
+
         String newStage = body.get("stage");
         if (newStage == null || newStage.isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Stage is required"));
         }
 
         return resumeAnalysisRepository.findById(id).map(analysis -> {
+            // RBAC: HR A cannot change stage of candidate analyzed by HR B
+            if (isHr && analysis.getRecruiter() != null && currentUser != null && !analysis.getRecruiter().getId().equals(currentUser.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                        "message", "Access denied: You cannot modify the pipeline stage of a candidate managed by another recruiter."
+                ));
+            }
             String oldStage = analysis.getStage() != null ? analysis.getStage() : "Under Review";
             analysis.setStage(newStage.trim());
             if ("Shortlisted".equalsIgnoreCase(newStage.trim())) {
@@ -621,7 +667,18 @@ public class DashboardApiController {
 
     @GetMapping("/shortlist")
     public ResponseEntity<?> getShortlist() {
-        List<ResumeAnalysis> list = resumeAnalysisRepository.findAllByOrderByCreatedAtDesc();
+        User currentUser = getAuthenticatedUser();
+        boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
+
+        List<ResumeAnalysis> list;
+        if (isHr) {
+            list = resumeAnalysisRepository.findActiveCandidatesByRecruiter(currentUser.getId());
+        } else if (currentUser != null) {
+            list = resumeAnalysisRepository.findAllForUser(currentUser.getId(), currentUser.getEmail());
+        } else {
+            list = Collections.emptyList();
+        }
+
         List<ResumeAnalysis> shortlisted = list.stream()
                 .filter(ra -> ra.isShortlisted()
                         || (ra.getStage() != null && ra.getStage().toLowerCase().contains("shortlist"))
@@ -653,7 +710,17 @@ public class DashboardApiController {
 
     @PostMapping("/candidates/{id:[0-9]+}/shortlist")
     public ResponseEntity<?> toggleShortlist(@PathVariable("id") Long id) {
+        User currentUser = getAuthenticatedUser();
+        boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
+
         return resumeAnalysisRepository.findById(id).map(analysis -> {
+            // RBAC: HR A cannot shortlist candidate managed by HR B
+            if (isHr && analysis.getRecruiter() != null && currentUser != null && !analysis.getRecruiter().getId().equals(currentUser.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                        "message", "Access denied: You cannot modify the shortlist status of a candidate managed by another recruiter."
+                ));
+            }
+
             boolean current = analysis.isShortlisted();
             analysis.setShortlisted(!current);
             if (!current) {
@@ -745,6 +812,10 @@ public class DashboardApiController {
                     .filter(ra -> ra.getInterviewDate() != null || "Interviewing".equalsIgnoreCase(ra.getStage()) || "Interview".equalsIgnoreCase(ra.getStage()) || ra.getFeedbackNotes() != null || ra.getInterviewStatus() != null)
                     .toList();
         } else {
+            Long hrId = (authUser != null) ? authUser.getId() : null;
+            if (hrId != null) {
+                all = resumeAnalysisRepository.findActiveCandidatesByRecruiter(hrId);
+            }
             interviews = all.stream()
                     .filter(ra -> ra.getInterviewDate() != null || "Interviewing".equalsIgnoreCase(ra.getStage()) || "Interview".equalsIgnoreCase(ra.getStage()) || ra.getFeedbackNotes() != null || "COMPLETED".equalsIgnoreCase(ra.getInterviewStatus()) || "SCHEDULED".equalsIgnoreCase(ra.getInterviewStatus()) || "RESCHEDULED".equalsIgnoreCase(ra.getInterviewStatus()) || "CANCELLED".equalsIgnoreCase(ra.getInterviewStatus()))
                     .toList();
@@ -776,7 +847,16 @@ public class DashboardApiController {
             return ResponseEntity.badRequest().body(Map.of("message", "Candidate ID is required"));
         }
 
+        User currentUser = getAuthenticatedUser();
+        boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
+
         return resumeAnalysisRepository.findById(candidateId).map(analysis -> {
+            // RBAC: HR A cannot schedule interviews for candidate managed by HR B
+            if (isHr && analysis.getRecruiter() != null && currentUser != null && !analysis.getRecruiter().getId().equals(currentUser.getId())) {
+                return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                        "message", "Access denied: You cannot schedule interviews for a candidate managed by another recruiter."
+                ));
+            }
             boolean isRescheduled = Boolean.TRUE.equals(payload.get("isReschedule")) ||
                     (payload.get("isRescheduled") != null && Boolean.parseBoolean(payload.get("isRescheduled").toString())) ||
                     ("RESCHEDULED".equalsIgnoreCase(analysis.getInterviewStatus())) ||
@@ -938,6 +1018,12 @@ public class DashboardApiController {
         }
 
         return resumeAnalysisRepository.findById(candidateId).map(analysis -> {
+            User currentUser = getAuthenticatedUser();
+            if (currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()))) {
+                if (analysis.getRecruiter() != null && !analysis.getRecruiter().getId().equals(currentUser.getId())) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Access denied: you can only cancel interviews for your own candidates."));
+                }
+            }
             String prevDateStr = null;
             if (analysis.getInterviewDate() != null) {
                 analysis.setPreviousInterviewDate(analysis.getInterviewDate());
@@ -999,6 +1085,12 @@ public class DashboardApiController {
         }
 
         return resumeAnalysisRepository.findById(candidateId).map(analysis -> {
+            User currentUser = getAuthenticatedUser();
+            if (currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()))) {
+                if (analysis.getRecruiter() != null && !analysis.getRecruiter().getId().equals(currentUser.getId())) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Access denied: you can only complete interviews for your own candidates."));
+                }
+            }
             analysis.setInterviewStatus("COMPLETED");
             if (analysis.getStage() == null || "Interviewing".equalsIgnoreCase(analysis.getStage()) || "Shortlisted".equalsIgnoreCase(analysis.getStage())) {
                 analysis.setStage("Interview Completed");
@@ -1023,6 +1115,12 @@ public class DashboardApiController {
         }
 
         return resumeAnalysisRepository.findById(candidateId).map(analysis -> {
+            User currentUser = getAuthenticatedUser();
+            if (currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()))) {
+                if (analysis.getRecruiter() != null && !analysis.getRecruiter().getId().equals(currentUser.getId())) {
+                    return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("message", "Access denied: you can only submit feedback for your own candidates."));
+                }
+            }
             int tech = 4;
             int comm = 4;
             int prob = 4;

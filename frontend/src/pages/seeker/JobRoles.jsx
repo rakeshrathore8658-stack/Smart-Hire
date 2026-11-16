@@ -53,6 +53,7 @@ const JobRoles = () => {
     return {
       id: job.id,
       title: job.title,
+      companyName: job.companyName || 'SmartHire Technologies',
       domainCode,
       domainLabel,
       status: job.status || 'Open',
@@ -355,7 +356,25 @@ const JobRoles = () => {
                     flexWrap: 'wrap',
                   }}
                 >
-                  <span className="badge badge-primary">{job.domainLabel}</span>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'center', flexWrap: 'wrap' }}>
+                    <span className="badge badge-primary">{job.domainLabel}</span>
+                    <span
+                      style={{
+                        fontSize: '0.72rem',
+                        fontWeight: 700,
+                        padding: '2px 8px',
+                        borderRadius: '6px',
+                        background: 'var(--bg-secondary)',
+                        border: '1px solid var(--border-color)',
+                        color: 'var(--text-secondary)',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                      }}
+                    >
+                      <i className="bi bi-building"></i> {job.companyName}
+                    </span>
+                  </div>
                   <span className="badge badge-success">
                     {job.status === 'Open' ? 'Active Requisition' : job.status}
                   </span>
@@ -394,8 +413,11 @@ const JobRoles = () => {
                       {job.title}
                     </h2>
                     <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginTop: '3px', flexWrap: 'wrap' }}>
+                      <span style={{ color: 'var(--primary)', fontWeight: 700, fontSize: '0.8rem', display: 'inline-flex', alignItems: 'center', gap: '4px' }}>
+                        <i className="bi bi-building"></i> {job.companyName}
+                      </span>
                       <small style={{ color: 'var(--accent)', fontWeight: 700, fontSize: '0.78rem' }}>
-                        Target ATS: {job.targetAtsScore}
+                        &bull; Target ATS: {job.targetAtsScore}
                       </small>
                       <small style={{ color: 'var(--text-muted)', fontSize: '0.76rem' }}>
                         &bull; {job.minExperience}-{job.maxExperience} yrs

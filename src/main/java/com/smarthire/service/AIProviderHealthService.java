@@ -88,6 +88,7 @@ public class AIProviderHealthService {
                 }
 
                 if (!installed.isEmpty()) {
+                    String bestModel = resolveBestFastOllamaModel(installed);
                     return AIProviderInfoDTO.builder()
                             .id("ollama")
                             .name("Local Ollama AI")
@@ -97,7 +98,7 @@ public class AIProviderHealthService {
                             .available(true)
                             .serverUrl(baseUrl)
                             .models(installed)
-                            .defaultModel(installed.contains("codellama:latest") ? "codellama:latest" : installed.get(0))
+                            .defaultModel(bestModel)
                             .build();
                 } else {
                     return AIProviderInfoDTO.builder()
@@ -105,11 +106,11 @@ public class AIProviderHealthService {
                             .name("Local Ollama AI")
                             .type("LOCAL_LLM")
                             .status("NO_MODELS")
-                            .statusMessage("Ollama connected, but no models installed. Run: ollama pull codellama")
+                            .statusMessage("Ollama connected, but no models installed. Run: ollama pull qwen3:4b")
                             .available(false)
                             .serverUrl(baseUrl)
-                            .models(List.of("codellama", "llama3", "mistral"))
-                            .defaultModel("codellama")
+                            .models(List.of("qwen3:4b", "llama3.2:3b", "codellama"))
+                            .defaultModel("qwen3:4b")
                             .build();
                 }
             }
@@ -130,11 +131,27 @@ public class AIProviderHealthService {
                 .build();
     }
 
+    private String resolveBestFastOllamaModel(List<String> installed) {
+        if (installed == null || installed.isEmpty()) return "qwen3:4b";
+        String[] preferredFast = {
+                "qwen3:4b", "qwen3", "qwen2.5:3b", "qwen2.5:1.5b", "llama3.2:3b", "llama3.2:1b",
+                "llama3.2:latest", "phi3:mini", "gemma2:2b", "codellama:latest", "codellama"
+        };
+        for (String pref : preferredFast) {
+            for (String inst : installed) {
+                if (inst.equalsIgnoreCase(pref) || inst.toLowerCase().startsWith(pref.toLowerCase())) {
+                    return inst;
+                }
+            }
+        }
+        return installed.get(0);
+    }
+
     private AIProviderInfoDTO checkGeminiHealth() {
         String key = aiConfig.getGemini().getApiKey();
         boolean hasKey = key != null && !key.isBlank() && !key.contains("${");
-        String configuredModel = "auto";
-        List<String> models = List.of("auto");
+        String configuredModel = "gemini-2.0-flash";
+        List<String> models = List.of("gemini-2.0-flash", "gemini-1.5-flash", "gemini-1.5-pro", "auto");
 
         if (hasKey) {
             return AIProviderInfoDTO.builder()
@@ -142,7 +159,7 @@ public class AIProviderHealthService {
                     .name("Google Gemini AI")
                     .type("CLOUD_LLM")
                     .status("CONNECTED")
-                    .statusMessage("API Key configured on server")
+                    .statusMessage("API Key configured on server (High-Speed Flash inference)")
                     .available(true)
                     .models(models)
                     .defaultModel(configuredModel)
@@ -153,7 +170,7 @@ public class AIProviderHealthService {
                     .name("Google Gemini AI")
                     .type("CLOUD_LLM")
                     .status("API_KEY_MISSING")
-                    .statusMessage("GEMINI_API_KEY environment variable not configured on server")
+                    .statusMessage("Enter your Gemini API key in UI for instant 2-second cloud ATS analysis")
                     .available(false)
                     .models(models)
                     .defaultModel(configuredModel)

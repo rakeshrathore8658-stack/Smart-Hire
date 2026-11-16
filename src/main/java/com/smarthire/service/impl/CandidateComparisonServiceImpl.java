@@ -3,10 +3,14 @@ package com.smarthire.service.impl;
 import com.smarthire.dto.*;
 import com.smarthire.entity.Resume;
 import com.smarthire.entity.ResumeAnalysis;
+import com.smarthire.entity.User;
 import com.smarthire.repository.ResumeAnalysisRepository;
+import com.smarthire.repository.UserRepository;
+import com.smarthire.security.SecurityUtils;
 import com.smarthire.service.CandidateComparisonService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +25,7 @@ import java.util.stream.Collectors;
 public class CandidateComparisonServiceImpl implements CandidateComparisonService {
 
     private final ResumeAnalysisRepository resumeAnalysisRepository;
+    private final UserRepository userRepository;
 
     @Override
     @Transactional(readOnly = true)
@@ -53,6 +58,16 @@ public class CandidateComparisonServiceImpl implements CandidateComparisonServic
 
         log.info("Fetching and comparing candidate records for IDs: {}", cleanIds);
         List<ResumeAnalysis> records = resumeAnalysisRepository.findAllById(cleanIds);
+
+        // RBAC Isolation: An HR can only compare candidates belonging to their own recruiter account
+        User currentUser = SecurityUtils.getCurrentUser(userRepository).orElse(null);
+        if (currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()))) {
+            for (ResumeAnalysis ra : records) {
+                if (ra.getRecruiter() != null && !ra.getRecruiter().getId().equals(currentUser.getId())) {
+                    throw new AccessDeniedException("Access denied: You do not have permission to view or compare candidates from another recruiter's pool.");
+                }
+            }
+        }
 
         if (records.size() < cleanIds.size()) {
             Set<Long> foundIds = records.stream().map(ResumeAnalysis::getId).collect(Collectors.toSet());

@@ -10,6 +10,7 @@ import com.smarthire.entity.Resume;
 import com.smarthire.entity.ResumeAnalysis;
 import com.smarthire.repository.ResumeAnalysisRepository;
 import com.smarthire.repository.ResumeRepository;
+import com.smarthire.repository.UserRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -25,6 +26,7 @@ public class ResumeAnalysisService {
 
     private final ResumeRepository resumeRepository;
     private final ResumeAnalysisRepository resumeAnalysisRepository;
+    private final UserRepository userRepository;
     private final ResumeExtractionService resumeExtractionService;
     private final DynamicPromptBuilderService promptBuilderService;
     private final AIProviderFactory aiProviderFactory;
@@ -32,11 +34,12 @@ public class ResumeAnalysisService {
     private final ATSScoringService atsScoringService;
     private final JobMatchingService jobMatchingService;
     private final ObjectMapper objectMapper;
+    private final org.springframework.transaction.support.TransactionTemplate transactionTemplate;
 
     /**
      * Executes the end-to-end AI analysis workflow with optional API key.
+     * Note: AI inference runs outside database transactions to prevent idle socket timeouts on serverless PostgreSQL.
      */
-    @Transactional
     public ATSAnalysisDTO analyzeResume(Long resumeId, String targetJobRole, String jobDescription, String aiProviderName, String modelName, String geminiApiKey) {
         Resume resume = resumeRepository.findById(resumeId)
                 .orElseThrow(() -> new IllegalArgumentException("Resume not found with ID: " + resumeId));
@@ -117,116 +120,143 @@ public class ResumeAnalysisService {
         // 8. Persist ResumeAnalysis in Database with Deduplication / Upsert
         String analysisJsonString = safeToJson(analysisDTO);
 
-        String candEmail = candidateInfo.getEmail();
-        if ((candEmail == null || candEmail.isBlank()) && resume.getCandidateEmail() != null) {
-            candEmail = resume.getCandidateEmail();
+        String rawCandEmail = candidateInfo.getEmail();
+        if ((rawCandEmail == null || rawCandEmail.isBlank()) && resume.getCandidateEmail() != null) {
+            rawCandEmail = resume.getCandidateEmail();
         }
-        String candPhone = candidateInfo.getPhoneNumber();
-        if ((candPhone == null || candPhone.isBlank()) && resume.getCandidatePhone() != null) {
-            candPhone = resume.getCandidatePhone();
+        String rawCandPhone = candidateInfo.getPhoneNumber();
+        if ((rawCandPhone == null || rawCandPhone.isBlank()) && resume.getCandidatePhone() != null) {
+            rawCandPhone = resume.getCandidatePhone();
         }
-        String candName = candidateInfo.getName();
-        if ((candName == null || candName.isBlank()) && resume.getCandidateName() != null) {
-            candName = resume.getCandidateName();
-        }
-
-        String normEmail = CandidateNormalizationUtils.normalizeEmail(candEmail);
-        String normPhone = CandidateNormalizationUtils.normalizePhone(candPhone);
-        String normRole = CandidateNormalizationUtils.normalizeRole(role);
-        String normName = CandidateNormalizationUtils.normalizeName(candName);
-
-        // Find existing application for candidate and target role
-        java.util.Optional<ResumeAnalysis> existingAnalysisOpt = java.util.Optional.empty();
-        if (normEmail != null) {
-            existingAnalysisOpt = resumeAnalysisRepository.findFirstByCandidateEmailNormalizedAndTargetJobRoleNormalized(normEmail, normRole);
-        }
-        if (existingAnalysisOpt.isEmpty() && normPhone != null) {
-            existingAnalysisOpt = resumeAnalysisRepository.findFirstByCandidatePhoneNormalizedAndTargetJobRoleNormalized(normPhone, normRole);
-        }
-        if (existingAnalysisOpt.isEmpty() && resume.getId() != null) {
-            existingAnalysisOpt = resumeAnalysisRepository.findFirstByResumeIdAndTargetJobRole(resume.getId(), role);
+        String rawCandName = candidateInfo.getName();
+        if ((rawCandName == null || rawCandName.isBlank()) && resume.getCandidateName() != null) {
+            rawCandName = resume.getCandidateName();
         }
 
-        ResumeAnalysis entity;
-        if (existingAnalysisOpt.isPresent()) {
-            entity = existingAnalysisOpt.get();
-            log.info("Updating existing application [id={}] for candidate [{}] and role [{}]",
-                    entity.getId(), normEmail != null ? normEmail : normPhone, normRole);
-            entity.setResume(resume);
-            entity.setTargetJobRole(role);
-            entity.setTargetJobRoleNormalized(normRole);
-            entity.setJobDescription(jobDescription);
-            entity.setOverallScore(analysisDTO.getOverallScore());
-            entity.setSkillsScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getSkills() : 0);
-            entity.setExperienceScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getExperience() : 0);
-            entity.setProjectsScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getProjects() : 0);
-            entity.setEducationScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getEducation() : 0);
-            entity.setKeywordScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getKeywords() : 0);
-            entity.setFormattingScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getFormatting() : 0);
-            entity.setContentQualityScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getContentQuality() : 0);
-            entity.setAnalysisJson(analysisJsonString);
-            entity.setAiProvider(actualProviderUsed);
-            entity.setCandidateName(normName);
-            entity.setCandidateEmail(candEmail);
-            entity.setCandidateEmailNormalized(normEmail);
-            entity.setCandidatePhone(candPhone);
-            entity.setCandidatePhoneNormalized(normPhone);
-            if (resume != null && resume.getUser() != null) {
-                entity.setUser(resume.getUser());
-            }
-            // Recruitment status and interview details are preserved
-        } else {
-            log.info("Creating new application entry for candidate [{}] and role [{}]",
-                    normEmail != null ? normEmail : normPhone, normRole);
-            entity = ResumeAnalysis.builder()
-                    .resume(resume)
-                    .user(resume != null ? resume.getUser() : null)
-                    .targetJobRole(role)
-                    .targetJobRoleNormalized(normRole)
-                    .candidateName(normName)
-                    .candidateEmail(candEmail)
-                    .candidateEmailNormalized(normEmail)
-                    .candidatePhone(candPhone)
-                    .candidatePhoneNormalized(normPhone)
-                    .jobDescription(jobDescription)
-                    .overallScore(analysisDTO.getOverallScore())
-                    .skillsScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getSkills() : 0)
-                    .experienceScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getExperience() : 0)
-                    .projectsScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getProjects() : 0)
-                    .educationScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getEducation() : 0)
-                    .keywordScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getKeywords() : 0)
-                    .formattingScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getFormatting() : 0)
-                    .contentQualityScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getContentQuality() : 0)
-                    .analysisJson(analysisJsonString)
-                    .aiProvider(actualProviderUsed)
-                    .stage("Under Review")
-                    .shortlisted(false)
-                    .build();
-        }
+        final String candEmail = rawCandEmail;
+        final String candPhone = rawCandPhone;
+        final String candName = rawCandName;
+        final String normEmail = CandidateNormalizationUtils.normalizeEmail(candEmail);
+        final String normPhone = CandidateNormalizationUtils.normalizePhone(candPhone);
+        final String normRole = CandidateNormalizationUtils.normalizeRole(role);
+        final String normName = CandidateNormalizationUtils.normalizeName(candName);
+        final String finalProviderUsed = actualProviderUsed;
 
-        ResumeAnalysis saved;
-        try {
-            saved = resumeAnalysisRepository.save(entity);
-        } catch (org.springframework.dao.DataIntegrityViolationException dive) {
-            log.warn("Concurrent duplicate insertion prevented by unique constraint. Upserting existing row.");
+        // 8. Persist ResumeAnalysis in Database with Deduplication / Upsert (Isolated Transaction)
+        ResumeAnalysis saved = transactionTemplate.execute(status -> {
+            // Find existing application for candidate and target role
+            java.util.Optional<ResumeAnalysis> existingAnalysisOpt = java.util.Optional.empty();
             if (normEmail != null) {
-                entity = resumeAnalysisRepository.findFirstByCandidateEmailNormalizedAndTargetJobRoleNormalized(normEmail, normRole)
-                        .orElse(entity);
-                entity.setResume(resume);
-                entity.setOverallScore(analysisDTO.getOverallScore());
-                entity.setAnalysisJson(analysisJsonString);
-                saved = resumeAnalysisRepository.save(entity);
-            } else {
-                throw dive;
+                existingAnalysisOpt = resumeAnalysisRepository.findFirstByCandidateEmailNormalizedAndTargetJobRoleNormalized(normEmail, normRole);
             }
-        }
+            if (existingAnalysisOpt.isEmpty() && normPhone != null) {
+                existingAnalysisOpt = resumeAnalysisRepository.findFirstByCandidatePhoneNormalizedAndTargetJobRoleNormalized(normPhone, normRole);
+            }
+            if (existingAnalysisOpt.isEmpty() && resume.getId() != null) {
+                existingAnalysisOpt = resumeAnalysisRepository.findFirstByResumeIdAndTargetJobRole(resume.getId(), role);
+            }
 
-        analysisDTO.setId(saved.getId());
+            ResumeAnalysis entity;
+            if (existingAnalysisOpt.isPresent()) {
+                entity = existingAnalysisOpt.get();
+                log.info("Updating existing application [id={}] for candidate [{}] and role [{}]",
+                        entity.getId(), normEmail != null ? normEmail : normPhone, normRole);
+                entity.setResume(resume);
+                entity.setTargetJobRole(role);
+                entity.setTargetJobRoleNormalized(normRole);
+                entity.setJobDescription(jobDescription);
+                entity.setOverallScore(analysisDTO.getOverallScore());
+                entity.setSkillsScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getSkills() : 0);
+                entity.setExperienceScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getExperience() : 0);
+                entity.setProjectsScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getProjects() : 0);
+                entity.setEducationScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getEducation() : 0);
+                entity.setKeywordScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getKeywords() : 0);
+                entity.setFormattingScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getFormatting() : 0);
+                entity.setContentQualityScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getContentQuality() : 0);
+                entity.setAnalysisJson(analysisJsonString);
+                entity.setAiProvider(finalProviderUsed);
+                entity.setCandidateName(normName);
+                entity.setCandidateEmail(candEmail);
+                entity.setCandidateEmailNormalized(normEmail);
+                entity.setCandidatePhone(candPhone);
+                entity.setCandidatePhoneNormalized(normPhone);
+                if (resume != null && resume.getUser() != null) {
+                    entity.setUser(resume.getUser());
+                }
+                if (resume != null && resume.getRecruiter() != null) {
+                    entity.setRecruiter(resume.getRecruiter());
+                }
+            } else {
+                log.info("Creating new application entry for candidate [{}] and role [{}]",
+                        normEmail != null ? normEmail : normPhone, normRole);
+                entity = ResumeAnalysis.builder()
+                        .resume(resume)
+                        .user(resume != null ? resume.getUser() : null)
+                        .recruiter(resume != null ? resume.getRecruiter() : null)
+                        .targetJobRole(role)
+                        .targetJobRoleNormalized(normRole)
+                        .candidateName(normName)
+                        .candidateEmail(candEmail)
+                        .candidateEmailNormalized(normEmail)
+                        .candidatePhone(candPhone)
+                        .candidatePhoneNormalized(normPhone)
+                        .jobDescription(jobDescription)
+                        .overallScore(analysisDTO.getOverallScore())
+                        .skillsScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getSkills() : 0)
+                        .experienceScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getExperience() : 0)
+                        .projectsScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getProjects() : 0)
+                        .educationScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getEducation() : 0)
+                        .keywordScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getKeywords() : 0)
+                        .formattingScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getFormatting() : 0)
+                        .contentQualityScore(analysisDTO.getCategoryScores() != null ? analysisDTO.getCategoryScores().getContentQuality() : 0)
+                        .analysisJson(analysisJsonString)
+                        .aiProvider(finalProviderUsed)
+                        .stage("Under Review")
+                        .shortlisted(false)
+                        .build();
+            }
+
+            // Map user_id if candidate is registered as a Job Seeker in database
+            if (entity.getUser() == null && normEmail != null) {
+                userRepository.findByEmail(normEmail).ifPresent(entity::setUser);
+            }
+
+            // Map recruiter_id if analyzed by an HR user
+            if (entity.getRecruiter() == null) {
+                com.smarthire.entity.User authUser = com.smarthire.security.SecurityUtils.getCurrentUser(userRepository).orElse(null);
+                if (authUser != null) {
+                    if ("HR".equalsIgnoreCase(authUser.getRole()) || "RECRUITER".equalsIgnoreCase(authUser.getRole())) {
+                        entity.setRecruiter(authUser);
+                    } else if (entity.getUser() == null) {
+                        entity.setUser(authUser);
+                    }
+                }
+            }
+
+            try {
+                return resumeAnalysisRepository.save(entity);
+            } catch (org.springframework.dao.DataIntegrityViolationException dive) {
+                log.warn("Concurrent duplicate insertion prevented by unique constraint. Upserting existing row.");
+                if (normEmail != null) {
+                    ResumeAnalysis existing = resumeAnalysisRepository.findFirstByCandidateEmailNormalizedAndTargetJobRoleNormalized(normEmail, normRole)
+                            .orElse(entity);
+                    existing.setResume(resume);
+                    existing.setOverallScore(analysisDTO.getOverallScore());
+                    existing.setAnalysisJson(analysisJsonString);
+                    return resumeAnalysisRepository.save(existing);
+                } else {
+                    throw dive;
+                }
+            }
+        });
+
+        if (saved != null) {
+            analysisDTO.setId(saved.getId());
+        }
 
         return analysisDTO;
     }
 
-    @Transactional
     public ATSAnalysisDTO analyzeResume(Long resumeId, String targetJobRole, String jobDescription, String aiProviderName, String geminiApiKey) {
         return analyzeResume(resumeId, targetJobRole, jobDescription, aiProviderName, null, geminiApiKey);
     }

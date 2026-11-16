@@ -1,5 +1,6 @@
 package com.smarthire.entity;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import jakarta.persistence.*;
 import lombok.*;
 import org.hibernate.annotations.JdbcTypeCode;
@@ -24,6 +25,10 @@ public class Job {
 
     @Column(nullable = false, length = 150)
     private String title;
+
+    @Column(name = "company_name", length = 150)
+    @Builder.Default
+    private String companyName = "SmartHire Technologies";
 
     @Column(length = 100)
     private String department;
@@ -71,8 +76,27 @@ public class Job {
     @Builder.Default
     private Integer shortlistedCount = 0;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "recruiter_id")
+    @JsonIgnore
+    private User recruiter;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    public Long getRecruiterId() {
+        return recruiter != null ? recruiter.getId() : null;
+    }
+
+    public String getCompanyName() {
+        if (companyName != null && !companyName.isBlank()) {
+            return companyName;
+        }
+        if (recruiter != null && recruiter.getCompanyName() != null && !recruiter.getCompanyName().isBlank()) {
+            return recruiter.getCompanyName();
+        }
+        return "SmartHire Technologies";
+    }
 
     public int getOpenings() {
         return openings != null ? openings : 1;
