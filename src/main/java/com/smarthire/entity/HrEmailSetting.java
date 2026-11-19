@@ -32,6 +32,10 @@ public class HrEmailSetting {
     @Column(name = "sender_name", length = 150)
     private String senderName;
 
+    @Column(name = "provider_type", length = 50)
+    @Builder.Default
+    private String providerType = "GMAIL_SMTP";
+
     @Column(name = "is_active")
     @Builder.Default
     private Boolean isActive = true;

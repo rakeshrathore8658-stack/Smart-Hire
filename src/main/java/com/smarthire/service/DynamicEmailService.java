@@ -34,6 +34,19 @@ public class DynamicEmailService {
     private final NotificationQueueRepository queueRepository;
     private final NotificationDeliveryLogRepository deliveryLogRepository;
     private final UserRepository userRepository;
+    private final HttpEmailService httpEmailService;
+
+    public String resolveProvider(String rawKeyOrPassword) {
+        if (rawKeyOrPassword == null) return "GMAIL_SMTP";
+        String clean = rawKeyOrPassword.trim();
+        if (clean.startsWith("xkeysib-")) {
+            return "BREVO_API";
+        }
+        if (clean.startsWith("re_")) {
+            return "RESEND_API";
+        }
+        return "GMAIL_SMTP";
+    }
 
     /**
      * Programmatically creates a JavaMailSenderImpl instance at runtime
@@ -61,33 +74,64 @@ public class DynamicEmailService {
     }
 
     /**
-     * Tests and verifies HR's Gmail SMTP configuration by sending a verification email to self.
+     * Tests and verifies HR's Email configuration by sending a verification email to self.
+     * Supports both Brevo / Resend HTTP APIs (Port 443 - Render Free Tier friendly) and Gmail SMTP (Port 587).
      * Encrypts and persists verified state upon success.
      */
     public boolean testSmtpConnection(String senderEmail, String rawAppPassword, String senderName) {
         if (senderEmail == null || senderEmail.isBlank() || rawAppPassword == null || rawAppPassword.isBlank()) {
-            throw new IllegalArgumentException("Both sender Gmail address and 16-digit App Password are required.");
+            throw new IllegalArgumentException("Both sender email address and App Password or API Key are required.");
         }
 
+        String provider = resolveProvider(rawAppPassword);
+        String fromName = (senderName != null && !senderName.isBlank()) ? senderName.trim() : "SmartHire Notifications";
+
+        String testBody = buildHtmlCard(
+                "Email Connection Verified Successfully!",
+                "This test email confirms that your email credentials (" + provider + ") are valid and active. SmartHire will now use your sender account (" + senderEmail.trim() + ") to send real-time candidate interview invitations, status updates, and shortlist notifications.",
+                null,
+                "Verified & Active",
+                fromName
+        );
+
+        // 1. Brevo HTTP API (Port 443)
+        if ("BREVO_API".equals(provider) || rawAppPassword.trim().startsWith("xkeysib-")) {
+            log.info("Testing Brevo HTTP API connection for: {}", senderEmail);
+            return httpEmailService.sendViaBrevo(
+                    rawAppPassword.trim(),
+                    senderEmail.trim(),
+                    fromName,
+                    senderEmail.trim(),
+                    fromName,
+                    "SmartHire - Brevo HTTP Email Connection Test",
+                    testBody
+            );
+        }
+
+        // 2. Resend HTTP API (Port 443)
+        if ("RESEND_API".equals(provider) || rawAppPassword.trim().startsWith("re_")) {
+            log.info("Testing Resend HTTP API connection for: {}", senderEmail);
+            return httpEmailService.sendViaResend(
+                    rawAppPassword.trim(),
+                    senderEmail.trim(),
+                    fromName,
+                    senderEmail.trim(),
+                    "SmartHire - Resend HTTP Email Connection Test",
+                    testBody
+            );
+        }
+
+        // 3. Gmail Direct SMTP (Port 587)
         JavaMailSenderImpl mailSender = createMailSender(senderEmail, rawAppPassword);
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
 
-            String fromName = (senderName != null && !senderName.isBlank()) ? senderName.trim() : "SmartHire Notifications";
             helper.setFrom(senderEmail.trim(), fromName);
             helper.setTo(senderEmail.trim());
             helper.setSubject("SmartHire - Gmail SMTP Notification Test");
-
-            String testBody = buildHtmlCard(
-                    "SMTP Connection Verified Successfully!",
-                    "This test email confirms that your Gmail SMTP credentials are valid and active. SmartHire will now use your Gmail account (" + senderEmail.trim() + ") to send real-time candidate interview invitations, status updates, and shortlist notifications.",
-                    null,
-                    "Verified & Active",
-                    fromName
-            );
-
             helper.setText(testBody, true);
+
             mailSender.send(message);
             log.info("Successfully verified SMTP connection for HR email: {}", senderEmail);
             return true;
@@ -95,12 +139,13 @@ public class DynamicEmailService {
         } catch (MailAuthenticationException ex) {
             log.error("Authentication failed for HR SMTP [{}]: {}", senderEmail, ex.getMessage());
             throw new RuntimeException("Gmail SMTP authentication failed. Please verify that 2-Step Verification is active on your Google Account and you generated a valid 16-character 'App Password'.");
-        } catch (MessagingException | UnsupportedEncodingException ex) {
-            log.error("SMTP error for HR email [{}]: {}", senderEmail, ex.getMessage());
-            throw new RuntimeException("Failed to establish secure SMTP connection with Gmail: " + ex.getMessage());
         } catch (Exception ex) {
-            log.error("Unexpected error during SMTP test for [{}]: {}", senderEmail, ex.getMessage());
-            throw new RuntimeException("SMTP test failed: " + ex.getMessage());
+            String msg = ex.getMessage() != null ? ex.getMessage() : "";
+            log.error("SMTP error for HR email [{}]: {}", senderEmail, msg);
+            if (msg.contains("timeout") || msg.contains("timed out") || msg.contains("ConnectException") || msg.contains("MailConnectException")) {
+                throw new RuntimeException("SMTP test failed: Connection timed out on port 587. Render Free Tier blocks outbound SMTP ports (25, 465, 587). Please use Brevo HTTP API (Port 443) by entering your free Brevo API key (starts with xkeysib-) in Email Settings.");
+            }
+            throw new RuntimeException("SMTP test failed: " + msg);
         }
     }
 
@@ -114,6 +159,7 @@ public class DynamicEmailService {
 
     /**
      * Sends an email dynamically and conditionally records it into the HR recruiter's history.
+     * Intelligently selects between Brevo HTTP API (Port 443), Resend API, and Gmail Direct SMTP (Port 587).
      */
     public boolean sendEmailFromHr(
             Long hrUserId,
@@ -154,17 +200,74 @@ public class DynamicEmailService {
             return false;
         }
 
-        // Decrypt password using AES-256-GCM
-        String decryptedPassword = encryptionService.decrypt(setting.getAppPassword());
+        // Decrypt password or API key using AES-256-GCM
+        String decryptedKeyOrPassword = encryptionService.decrypt(setting.getAppPassword());
+        String provider = setting.getProviderType() != null && !setting.getProviderType().isBlank()
+                ? setting.getProviderType()
+                : resolveProvider(decryptedKeyOrPassword);
 
+        String senderName = (setting.getSenderName() != null && !setting.getSenderName().isBlank())
+                ? setting.getSenderName().trim()
+                : "SmartHire Hiring Team";
+
+        // Global fallback keys from environment
+        String envBrevoKey = System.getenv("BREVO_API_KEY");
+        String envResendKey = System.getenv("RESEND_API_KEY");
+
+        // 1. Brevo HTTP API
+        if ("BREVO_API".equals(provider) || decryptedKeyOrPassword.startsWith("xkeysib-")) {
+            try {
+                boolean sent = httpEmailService.sendViaBrevo(
+                        decryptedKeyOrPassword,
+                        setting.getSenderEmail(),
+                        senderName,
+                        cleanEmail,
+                        cleanCandName,
+                        safeSubject,
+                        safeBody
+                );
+                if (recordHistory) {
+                    recordDirectEmailHistory(hrUserId, cleanEmail, cleanCandName, applicationId, effectiveEvent, safeSubject, safeBody, sent, "Delivered via Brevo HTTP API (" + setting.getSenderEmail() + ")");
+                }
+                return sent;
+            } catch (Exception ex) {
+                log.error("Brevo API send failed: {}", ex.getMessage());
+                if (recordHistory) {
+                    recordDirectEmailHistory(hrUserId, cleanEmail, cleanCandName, applicationId, effectiveEvent, safeSubject, safeBody, false, "Brevo API error: " + ex.getMessage());
+                }
+                return false;
+            }
+        }
+
+        // 2. Resend HTTP API
+        if ("RESEND_API".equals(provider) || decryptedKeyOrPassword.startsWith("re_")) {
+            try {
+                boolean sent = httpEmailService.sendViaResend(
+                        decryptedKeyOrPassword,
+                        setting.getSenderEmail(),
+                        senderName,
+                        cleanEmail,
+                        safeSubject,
+                        safeBody
+                );
+                if (recordHistory) {
+                    recordDirectEmailHistory(hrUserId, cleanEmail, cleanCandName, applicationId, effectiveEvent, safeSubject, safeBody, sent, "Delivered via Resend HTTP API (" + setting.getSenderEmail() + ")");
+                }
+                return sent;
+            } catch (Exception ex) {
+                log.error("Resend API send failed: {}", ex.getMessage());
+                if (recordHistory) {
+                    recordDirectEmailHistory(hrUserId, cleanEmail, cleanCandName, applicationId, effectiveEvent, safeSubject, safeBody, false, "Resend API error: " + ex.getMessage());
+                }
+                return false;
+            }
+        }
+
+        // 3. Gmail Direct SMTP (Port 587) with Automatic Cloud HTTP Fallback
         try {
-            JavaMailSenderImpl mailSender = createMailSender(setting.getSenderEmail(), decryptedPassword);
+            JavaMailSenderImpl mailSender = createMailSender(setting.getSenderEmail(), decryptedKeyOrPassword);
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
-
-            String senderName = (setting.getSenderName() != null && !setting.getSenderName().isBlank())
-                    ? setting.getSenderName().trim()
-                    : "SmartHire Hiring Team";
 
             helper.setFrom(setting.getSenderEmail().trim(), senderName);
             helper.setTo(cleanEmail);
@@ -180,9 +283,36 @@ public class DynamicEmailService {
             return true;
 
         } catch (Exception ex) {
-            log.error("Failed to send dynamic email from HR [{}] to [{}]: {}", setting.getSenderEmail(), cleanEmail, ex.getMessage());
+            String err = ex.getMessage() != null ? ex.getMessage() : "";
+            log.warn("Direct SMTP failed for HR [{}]: {}", setting.getSenderEmail(), err);
+
+            // Cloud port timeout fallback to global Brevo / Resend if configured in Render environment variables
+            if (envBrevoKey != null && !envBrevoKey.isBlank()) {
+                log.info("Falling back to global Brevo HTTP API for [{}]", cleanEmail);
+                try {
+                    boolean sent = httpEmailService.sendViaBrevo(envBrevoKey, setting.getSenderEmail(), senderName, cleanEmail, cleanCandName, safeSubject, safeBody);
+                    if (recordHistory) {
+                        recordDirectEmailHistory(hrUserId, cleanEmail, cleanCandName, applicationId, effectiveEvent, safeSubject, safeBody, sent, "Delivered via Brevo HTTP API fallback");
+                    }
+                    return sent;
+                } catch (Exception brevoEx) {
+                    log.error("Brevo fallback failed: {}", brevoEx.getMessage());
+                }
+            } else if (envResendKey != null && !envResendKey.isBlank()) {
+                log.info("Falling back to global Resend HTTP API for [{}]", cleanEmail);
+                try {
+                    boolean sent = httpEmailService.sendViaResend(envResendKey, setting.getSenderEmail(), senderName, cleanEmail, safeSubject, safeBody);
+                    if (recordHistory) {
+                        recordDirectEmailHistory(hrUserId, cleanEmail, cleanCandName, applicationId, effectiveEvent, safeSubject, safeBody, sent, "Delivered via Resend HTTP API fallback");
+                    }
+                    return sent;
+                } catch (Exception resendEx) {
+                    log.error("Resend fallback failed: {}", resendEx.getMessage());
+                }
+            }
+
             if (recordHistory) {
-                recordDirectEmailHistory(hrUserId, cleanEmail, cleanCandName, applicationId, effectiveEvent, safeSubject, safeBody, false, ex.getMessage());
+                recordDirectEmailHistory(hrUserId, cleanEmail, cleanCandName, applicationId, effectiveEvent, safeSubject, safeBody, false, err);
             }
             return false;
         }

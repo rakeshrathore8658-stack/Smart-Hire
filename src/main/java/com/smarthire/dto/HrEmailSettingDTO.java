@@ -28,6 +28,7 @@ public class HrEmailSettingDTO {
     private String appPassword;
 
     private String senderName;
+    private String providerType;
     private Boolean isVerified;
     private LocalDateTime lastTestedAt;
 

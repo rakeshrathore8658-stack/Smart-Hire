@@ -72,6 +72,7 @@ public class HrEmailSettingsController {
             responseMap.put("isVerified", Boolean.TRUE.equals(setting.getIsVerified()));
             responseMap.put("senderEmail", setting.getSenderEmail() != null ? setting.getSenderEmail() : "");
             responseMap.put("senderName", setting.getSenderName() != null ? setting.getSenderName() : "");
+            responseMap.put("providerType", setting.getProviderType() != null ? setting.getProviderType() : "GMAIL_SMTP");
             responseMap.put("lastTestedAt", setting.getLastTestedAt() != null ? setting.getLastTestedAt().toString() : "");
             responseMap.put("maskedPassword", "••••••••••••••••");
             responseMap.put("setting", new LinkedHashMap<>(responseMap));
@@ -108,27 +109,28 @@ public class HrEmailSettingsController {
             if (dto == null || dto.getSenderEmail() == null || dto.getSenderEmail().isBlank()) {
                 return ResponseEntity.badRequest().body(Map.of(
                         "success", false,
-                        "message", "Sender Gmail address is required."
+                        "message", "Sender email address is required."
                 ));
             }
 
             String cleanEmail = dto.getSenderEmail().trim().toLowerCase();
-            if (!cleanEmail.contains("@") || !cleanEmail.endsWith("gmail.com")) {
+            if (!cleanEmail.contains("@") || cleanEmail.length() < 5) {
                 return ResponseEntity.badRequest().body(Map.of(
                         "success", false,
-                        "message", "Please enter a valid Gmail address (e.g. yourname@gmail.com)."
+                        "message", "Please enter a valid email address (e.g. yourname@gmail.com)."
                 ));
             }
 
             Optional<HrEmailSetting> existingOpt = hrEmailSettingRepository.findFirstByHrUserIdOrderByIdDesc(hr.getId());
             String encryptedPassword;
+            String rawPassword = null;
 
             if (dto.getAppPassword() != null && !dto.getAppPassword().isBlank()) {
-                String rawPassword = dto.getAppPassword().trim().replaceAll("\\s+", "");
-                if (rawPassword.length() < 12) {
+                rawPassword = dto.getAppPassword().trim().replaceAll("\\s+", "");
+                if (rawPassword.length() < 8) {
                     return ResponseEntity.badRequest().body(Map.of(
                             "success", false,
-                            "message", "Please enter a valid 16-character Google App Password."
+                            "message", "Please enter a valid 16-character Google App Password or HTTP API Key (Brevo / Resend)."
                     ));
                 }
                 encryptedPassword = encryptionService.encrypt(rawPassword);
@@ -138,7 +140,7 @@ public class HrEmailSettingsController {
             } else {
                 return ResponseEntity.badRequest().body(Map.of(
                         "success", false,
-                        "message", "16-digit Google App Password is required."
+                        "message", "App Password or API Key is required."
                 ));
             }
 
@@ -150,18 +152,26 @@ public class HrEmailSettingsController {
                     ? dto.getSenderName().trim()
                     : (hr.getFullName() != null ? hr.getFullName() : "SmartHire Recruiter"));
             setting.setIsActive(true);
+
+            String provider = dto.getProviderType() != null && !dto.getProviderType().isBlank()
+                    ? dto.getProviderType().trim().toUpperCase()
+                    : (rawPassword != null ? dynamicEmailService.resolveProvider(rawPassword) : setting.getProviderType());
+            setting.setProviderType(provider != null ? provider : "GMAIL_SMTP");
+
             if (dto.getAppPassword() != null && !dto.getAppPassword().isBlank()) {
                 setting.setIsVerified(false); // New credentials should be re-verified
             }
 
             HrEmailSetting saved = hrEmailSettingRepository.save(setting);
-            log.info("Encrypted and saved AES-256-GCM SMTP settings for HR user ID [{}] ({})", hr.getId(), saved.getSenderEmail());
+            log.info("Encrypted and saved AES-256-GCM email settings ({}) for HR user ID [{}] ({})",
+                    saved.getProviderType(), hr.getId(), saved.getSenderEmail());
 
             Map<String, Object> resp = new LinkedHashMap<>();
             resp.put("success", true);
             resp.put("configured", true);
             resp.put("active", true);
             resp.put("isVerified", Boolean.TRUE.equals(saved.getIsVerified()));
+            resp.put("providerType", saved.getProviderType());
             resp.put("senderEmail", saved.getSenderEmail());
             resp.put("senderName", saved.getSenderName());
             resp.put("maskedPassword", "••••••••••••••••");

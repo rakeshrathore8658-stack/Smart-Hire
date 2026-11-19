@@ -12,6 +12,7 @@ export default function HrEmailSettings() {
   const [senderEmail, setSenderEmail] = useState('');
   const [senderName, setSenderName] = useState('');
   const [appPassword, setAppPassword] = useState('');
+  const [providerType, setProviderType] = useState('BREVO_API'); // BREVO_API, GMAIL_SMTP, RESEND_API
   const [showPassword, setShowPassword] = useState(false);
   const [settingData, setSettingData] = useState(null);
 
@@ -26,6 +27,9 @@ export default function HrEmailSettings() {
         setSettingData(data);
         setSenderEmail(data.senderEmail || '');
         setSenderName(data.senderName || '');
+        if (data.providerType) {
+          setProviderType(data.providerType);
+        }
       } else {
         setSettingData(null);
         setSenderEmail('');
@@ -43,7 +47,7 @@ export default function HrEmailSettings() {
     if (location.state?.updated) {
       setAlert({
         type: 'success',
-        message: 'SMTP credentials updated successfully! You can verify live delivery with "Test Connection".',
+        message: 'Credentials updated successfully! You can verify live delivery with "Test Connection".',
       });
     }
   }, [location.state]);
@@ -52,19 +56,23 @@ export default function HrEmailSettings() {
     e.preventDefault();
     const cleanEmail = senderEmail.trim().toLowerCase();
     if (!cleanEmail || !cleanEmail.includes('@')) {
-      setAlert({ type: 'danger', message: 'Please enter a valid Gmail address.' });
+      setAlert({ type: 'danger', message: 'Please enter a valid email address.' });
       return;
     }
-    if (!cleanEmail.endsWith('gmail.com')) {
-      setAlert({ type: 'danger', message: 'Please provide a Gmail address (@gmail.com).' });
+    if (providerType === 'GMAIL_SMTP' && !cleanEmail.endsWith('gmail.com')) {
+      setAlert({ type: 'danger', message: 'Please provide a Gmail address (@gmail.com) for Gmail SMTP.' });
       return;
     }
     if (!appPassword.trim()) {
-      setAlert({ type: 'danger', message: 'Please enter your 16-character Google App Password.' });
+      setAlert({ type: 'danger', message: 'Please enter your API Key or App Password.' });
       return;
     }
-    if (appPassword.trim().replace(/\s+/g, '').length < 12) {
+    if (providerType === 'GMAIL_SMTP' && appPassword.trim().replace(/\s+/g, '').length < 12) {
       setAlert({ type: 'danger', message: 'Google App Password must be 16 characters (e.g. abcd efgh ijkl mnop).' });
+      return;
+    }
+    if (providerType === 'BREVO_API' && !appPassword.trim().startsWith('xkeysib-') && appPassword.trim().length < 20) {
+      setAlert({ type: 'danger', message: 'Brevo API keys start with "xkeysib-". Please copy the key from your Brevo Dashboard ➔ SMTP & API.' });
       return;
     }
 
@@ -75,18 +83,19 @@ export default function HrEmailSettings() {
         senderEmail: cleanEmail,
         senderName: senderName.trim() || undefined,
         appPassword: appPassword.trim(),
+        providerType: providerType,
       };
       const res = await api.post('/hr/email-settings', payload);
       setAlert({
         type: 'success',
-        message: res.data?.message || 'SMTP settings configured successfully! Click "Test Connection" to verify with Google.',
+        message: res.data?.message || 'Email settings configured successfully! Click "Test Connection" to verify.',
       });
       setAppPassword('');
       fetchSettings();
     } catch (err) {
       setAlert({
         type: 'danger',
-        message: err.response?.data?.message || 'Failed to save SMTP credentials. Please check input.',
+        message: err.response?.data?.message || 'Failed to save credentials. Please check input.',
       });
     } finally {
       setSaving(false);
@@ -237,9 +246,9 @@ export default function HrEmailSettings() {
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px', marginBottom: '20px' }}>
               <div>
                 <span style={{ fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '1px', color: 'var(--text-muted)', fontWeight: 700 }}>
-                  CURRENT SMTP STATUS
+                  CURRENT EMAIL DELIVERY STATUS
                 </span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginTop: '6px', flexWrap: 'wrap' }}>
                   <span
                     className={`badge ${settingData.isVerified ? 'badge-success' : 'badge-warning'}`}
                     style={{
@@ -258,6 +267,21 @@ export default function HrEmailSettings() {
                     <i className={`bi ${settingData.isVerified ? 'bi-patch-check-fill' : 'bi-hourglass-split'}`}></i>
                     {settingData.isVerified ? 'VERIFIED & ACTIVE' : 'CONFIGURED (UNVERIFIED)'}
                   </span>
+                  {settingData.providerType === 'BREVO_API' && (
+                    <span className="badge badge-primary" style={{ fontSize: '0.75rem', padding: '5px 10px', background: 'rgba(59, 130, 246, 0.12)', color: '#2563eb' }}>
+                      <i className="bi bi-cloud-check-fill"></i> Brevo HTTP API (Port 443)
+                    </span>
+                  )}
+                  {settingData.providerType === 'RESEND_API' && (
+                    <span className="badge badge-info" style={{ fontSize: '0.75rem', padding: '5px 10px', background: 'rgba(14, 165, 233, 0.12)', color: '#0284c7' }}>
+                      <i className="bi bi-cloud-check-fill"></i> Resend HTTP API (Port 443)
+                    </span>
+                  )}
+                  {(!settingData.providerType || settingData.providerType === 'GMAIL_SMTP') && (
+                    <span className="badge badge-neutral" style={{ fontSize: '0.75rem', padding: '5px 10px' }}>
+                      <i className="bi bi-envelope-fill"></i> Gmail SMTP (Port 587)
+                    </span>
+                  )}
                   <span style={{ fontSize: '1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                     {settingData.senderEmail}
                   </span>
@@ -433,14 +457,113 @@ export default function HrEmailSettings() {
         >
           <div style={{ marginBottom: '20px', borderBottom: '1px solid var(--border-color, #f1f5f9)', paddingBottom: '12px' }}>
             <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-              Set Up Gmail Credentials
+              Configure Email Delivery Service
             </h3>
             <p style={{ margin: '4px 0 0 0', fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-              Connect your recruiter Gmail account to enable automatic candidate notifications.
+              Choose your delivery provider to enable automatic candidate notifications and interview scheduling.
             </p>
           </div>
 
           <form onSubmit={handleSaveInitial}>
+            {/* Provider Selection Tabs */}
+            <div style={{ marginBottom: '22px' }}>
+              <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '8px', color: 'var(--text-primary)' }}>
+                Email Service Provider <span style={{ color: '#ef4444' }}>*</span>
+              </label>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+                <button
+                  type="button"
+                  onClick={() => setProviderType('BREVO_API')}
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: providerType === 'BREVO_API' ? '2px solid #2563eb' : '1px solid var(--border-color, #cbd5e1)',
+                    background: providerType === 'BREVO_API' ? 'rgba(37, 99, 235, 0.06)' : 'var(--input-bg, #ffffff)',
+                    color: 'var(--text-primary)',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                    <strong style={{ fontSize: '0.92rem', color: providerType === 'BREVO_API' ? '#2563eb' : 'inherit' }}>
+                      Brevo HTTP API
+                    </strong>
+                    <span style={{ fontSize: '0.7rem', padding: '2px 6px', background: '#dbeafe', color: '#1e40af', borderRadius: '4px', fontWeight: 700 }}>
+                      RECOMMENDED
+                    </span>
+                  </div>
+                  <small style={{ color: 'var(--text-muted)', fontSize: '0.76rem', display: 'block' }}>
+                    Port 443 (HTTPS) &bull; 100% Free on Render &bull; 300 emails/day
+                  </small>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProviderType('GMAIL_SMTP')}
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: providerType === 'GMAIL_SMTP' ? '2px solid var(--accent, #FF7900)' : '1px solid var(--border-color, #cbd5e1)',
+                    background: providerType === 'GMAIL_SMTP' ? 'rgba(255, 121, 0, 0.06)' : 'var(--input-bg, #ffffff)',
+                    color: 'var(--text-primary)',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <strong style={{ fontSize: '0.92rem', display: 'block', marginBottom: '4px', color: providerType === 'GMAIL_SMTP' ? 'var(--accent, #FF7900)' : 'inherit' }}>
+                    Gmail Direct SMTP
+                  </strong>
+                  <small style={{ color: 'var(--text-muted)', fontSize: '0.76rem', display: 'block' }}>
+                    Port 587 &bull; For Localhost / Paid Cloud VPS
+                  </small>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setProviderType('RESEND_API')}
+                  style={{
+                    padding: '12px',
+                    borderRadius: '8px',
+                    border: providerType === 'RESEND_API' ? '2px solid #0284c7' : '1px solid var(--border-color, #cbd5e1)',
+                    background: providerType === 'RESEND_API' ? 'rgba(14, 165, 233, 0.06)' : 'var(--input-bg, #ffffff)',
+                    color: 'var(--text-primary)',
+                    textAlign: 'left',
+                    cursor: 'pointer',
+                  }}
+                >
+                  <strong style={{ fontSize: '0.92rem', display: 'block', marginBottom: '4px', color: providerType === 'RESEND_API' ? '#0284c7' : 'inherit' }}>
+                    Resend HTTP API
+                  </strong>
+                  <small style={{ color: 'var(--text-muted)', fontSize: '0.76rem', display: 'block' }}>
+                    Port 443 (HTTPS) &bull; 100 emails/day free
+                  </small>
+                </button>
+              </div>
+            </div>
+
+            {/* Render Free Tier Explanatory Note */}
+            {providerType === 'BREVO_API' && (
+              <div
+                style={{
+                  padding: '12px 16px',
+                  borderRadius: '8px',
+                  background: 'rgba(59, 130, 246, 0.08)',
+                  border: '1px solid rgba(59, 130, 246, 0.25)',
+                  marginBottom: '18px',
+                  fontSize: '0.84rem',
+                  lineHeight: 1.5,
+                  color: 'var(--text-primary)',
+                }}
+              >
+                <div style={{ fontWeight: 700, color: '#1d4ed8', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <i className="bi bi-info-circle-fill"></i> Render Free Tier Compatible (Bypasses Port 587 Block):
+                </div>
+                <span>
+                  Render Free Tier blocks outbound SMTP ports (25/587). Brevo uses standard HTTPS (Port 443) which works instantly without port restrictions. You can add your personal Gmail as a sender in Brevo!
+                </span>
+              </div>
+            )}
+
             <div style={{ marginBottom: '18px' }}>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>
                 Sender Display Name (Optional)
@@ -464,7 +587,7 @@ export default function HrEmailSettings() {
 
             <div style={{ marginBottom: '18px' }}>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>
-                Gmail Address <span style={{ color: '#ef4444' }}>*</span>
+                {providerType === 'BREVO_API' ? 'Sender Email (Verified in Brevo)' : providerType === 'RESEND_API' ? 'Sender Email (e.g. onboarding@resend.dev or your domain)' : 'Gmail Address'} <span style={{ color: '#ef4444' }}>*</span>
               </label>
               <input
                 type="email"
@@ -486,7 +609,7 @@ export default function HrEmailSettings() {
 
             <div style={{ marginBottom: '24px' }}>
               <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>
-                16-Digit Google App Password <span style={{ color: '#ef4444' }}>*</span>
+                {providerType === 'BREVO_API' ? 'Brevo API Key (starts with xkeysib-)' : providerType === 'RESEND_API' ? 'Resend API Key (starts with re_)' : '16-Digit Google App Password'} <span style={{ color: '#ef4444' }}>*</span>
               </label>
               <div style={{ position: 'relative' }}>
                 <input
@@ -494,7 +617,7 @@ export default function HrEmailSettings() {
                   required
                   value={appPassword}
                   onChange={(e) => setAppPassword(e.target.value)}
-                  placeholder="e.g. abcd efgh ijkl mnop"
+                  placeholder={providerType === 'BREVO_API' ? 'xkeysib-...' : providerType === 'RESEND_API' ? 're_...' : 'e.g. abcd efgh ijkl mnop'}
                   style={{
                     width: '100%',
                     padding: '10px 42px 10px 14px',
@@ -526,7 +649,13 @@ export default function HrEmailSettings() {
                 </button>
               </div>
               <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-                Encrypted at rest with enterprise AES-256-GCM. Never logged or exposed.
+                {providerType === 'BREVO_API' ? (
+                  <span>Get your free key from <a href="https://app.brevo.com/settings/keys/api" target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 600 }}>Brevo Dashboard ➔ SMTP & API ➔ API Keys</a>.</span>
+                ) : providerType === 'RESEND_API' ? (
+                  <span>Get your key from <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" style={{ color: '#0284c7', fontWeight: 600 }}>Resend Dashboard</a>.</span>
+                ) : (
+                  <span>Encrypted with AES-256-GCM. Note: Render Free Tier blocks port 587.</span>
+                )}
               </span>
             </div>
 

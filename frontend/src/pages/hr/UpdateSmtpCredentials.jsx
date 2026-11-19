@@ -9,6 +9,7 @@ export default function UpdateSmtpCredentials() {
   const [senderName, setSenderName] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [providerType, setProviderType] = useState('BREVO_API');
   const [showPassword, setShowPassword] = useState(false);
 
   const [saving, setSaving] = useState(false);
@@ -27,6 +28,9 @@ export default function UpdateSmtpCredentials() {
         if (data && data.senderName) {
           setSenderName(data.senderName);
         }
+        if (data && data.providerType) {
+          setProviderType(data.providerType);
+        }
       } catch (err) {
         console.warn('Could not prefill email settings:', err);
       }
@@ -37,24 +41,28 @@ export default function UpdateSmtpCredentials() {
   const validateInputs = () => {
     const email = senderEmail.trim().toLowerCase();
     if (!email || !email.includes('@')) {
-      setAlert({ type: 'danger', message: 'Please enter a valid Gmail address.' });
+      setAlert({ type: 'danger', message: 'Please enter a valid email address.' });
       return false;
     }
-    if (!email.endsWith('gmail.com')) {
+    if (providerType === 'GMAIL_SMTP' && !email.endsWith('gmail.com')) {
       setAlert({ type: 'danger', message: 'Only Gmail addresses (@gmail.com) are supported for Gmail SMTP.' });
       return false;
     }
     const cleanPwd = newPassword.trim().replace(/\s+/g, '');
     if (!cleanPwd) {
-      setAlert({ type: 'danger', message: 'Please enter your new 16-character Google App Password.' });
+      setAlert({ type: 'danger', message: 'Please enter your new API Key or App Password.' });
       return false;
     }
-    if (cleanPwd.length < 12) {
+    if (providerType === 'GMAIL_SMTP' && cleanPwd.length < 12) {
       setAlert({ type: 'danger', message: 'Google App Password must be 16 characters (e.g. abcd efgh ijkl mnop).' });
       return false;
     }
+    if (providerType === 'BREVO_API' && !cleanPwd.startsWith('xkeysib-') && cleanPwd.length < 20) {
+      setAlert({ type: 'danger', message: 'Brevo API keys start with "xkeysib-". Please copy the key from your Brevo Dashboard.' });
+      return false;
+    }
     if (newPassword.trim() !== confirmPassword.trim()) {
-      setAlert({ type: 'danger', message: 'New App Password and Confirm App Password do not match.' });
+      setAlert({ type: 'danger', message: 'New credential and Confirm credential do not match.' });
       return false;
     }
     return true;
@@ -65,30 +73,31 @@ export default function UpdateSmtpCredentials() {
 
     try {
       setTesting(true);
-      setAlert({ type: 'info', message: 'Verifying SMTP credentials with Google Mail servers...' });
+      setAlert({ type: 'info', message: 'Verifying credentials with mail server...' });
 
       const payload = {
         senderEmail: senderEmail.trim().toLowerCase(),
         senderName: senderName.trim() || undefined,
         appPassword: newPassword.trim(),
+        providerType: providerType,
       };
 
       const res = await api.post('/hr/email-settings/test', payload);
       if (res.data?.success && res.data?.result === 'SUCCESS') {
         setAlert({
           type: 'success',
-          message: res.data.message || 'SMTP Connection verified successfully! Google accepted the credentials.',
+          message: res.data.message || 'Connection verified successfully! The mail server accepted your credentials.',
         });
       } else {
         setAlert({
           type: 'danger',
-          message: res.data?.message || 'SMTP connection verification failed. Please check credentials.',
+          message: res.data?.message || 'Connection verification failed. Please check credentials.',
         });
       }
     } catch (err) {
       setAlert({
         type: 'danger',
-        message: err.response?.data?.message || 'SMTP connection test failed. Verify 2-Step Verification and App Password.',
+        message: err.response?.data?.message || 'Connection test failed. Check your API key or App Password.',
       });
     } finally {
       setTesting(false);
@@ -107,12 +116,13 @@ export default function UpdateSmtpCredentials() {
         senderEmail: senderEmail.trim().toLowerCase(),
         senderName: senderName.trim() || undefined,
         appPassword: newPassword.trim(),
+        providerType: providerType,
       };
 
       const res = await api.put('/hr/email-settings', payload);
       setAlert({
         type: 'success',
-        message: 'SMTP credentials updated and encrypted successfully! Redirecting to Email Settings...',
+        message: 'Email credentials updated and encrypted successfully! Redirecting to Email Settings...',
       });
 
       // Clear password states from memory immediately
@@ -151,10 +161,10 @@ export default function UpdateSmtpCredentials() {
       <div style={{ marginBottom: '24px' }}>
         <h1 style={{ fontSize: '1.75rem', fontWeight: 800, margin: '0 0 6px 0', color: 'var(--text-primary)' }}>
           <i className="bi bi-shield-lock" style={{ color: 'var(--accent)', marginRight: '10px' }}></i>
-          Update SMTP Credentials
+          Update Email Delivery Credentials
         </h1>
         <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.92rem' }}>
-          Update your personal Gmail address or generate a new Google App Password. New credentials are encrypted with AES-256-GCM.
+          Update your sender email address or API Key / App Password. Works seamlessly with Brevo HTTP API (Port 443) on Render Free Tier.
         </p>
       </div>
 
@@ -200,6 +210,82 @@ export default function UpdateSmtpCredentials() {
         }}
       >
         <form onSubmit={handleUpdate}>
+          {/* Provider Selection */}
+          <div style={{ marginBottom: '22px' }}>
+            <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '8px', color: 'var(--text-primary)' }}>
+              Delivery Provider <span style={{ color: '#ef4444' }}>*</span>
+            </label>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+              <button
+                type="button"
+                onClick={() => setProviderType('BREVO_API')}
+                style={{
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: providerType === 'BREVO_API' ? '2px solid #2563eb' : '1px solid var(--border-color, #cbd5e1)',
+                  background: providerType === 'BREVO_API' ? 'rgba(37, 99, 235, 0.06)' : 'var(--input-bg, #ffffff)',
+                  color: 'var(--text-primary)',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
+                  <strong style={{ fontSize: '0.92rem', color: providerType === 'BREVO_API' ? '#2563eb' : 'inherit' }}>
+                    Brevo HTTP API
+                  </strong>
+                  <span style={{ fontSize: '0.7rem', padding: '2px 6px', background: '#dbeafe', color: '#1e40af', borderRadius: '4px', fontWeight: 700 }}>
+                    RECOMMENDED
+                  </span>
+                </div>
+                <small style={{ color: 'var(--text-muted)', fontSize: '0.76rem', display: 'block' }}>
+                  Port 443 &bull; 100% Free on Render &bull; 300/day
+                </small>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setProviderType('GMAIL_SMTP')}
+                style={{
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: providerType === 'GMAIL_SMTP' ? '2px solid var(--accent, #FF7900)' : '1px solid var(--border-color, #cbd5e1)',
+                  background: providerType === 'GMAIL_SMTP' ? 'rgba(255, 121, 0, 0.06)' : 'var(--input-bg, #ffffff)',
+                  color: 'var(--text-primary)',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <strong style={{ fontSize: '0.92rem', display: 'block', marginBottom: '4px', color: providerType === 'GMAIL_SMTP' ? 'var(--accent, #FF7900)' : 'inherit' }}>
+                  Gmail SMTP
+                </strong>
+                <small style={{ color: 'var(--text-muted)', fontSize: '0.76rem', display: 'block' }}>
+                  Port 587 &bull; For Local / Paid VPS
+                </small>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setProviderType('RESEND_API')}
+                style={{
+                  padding: '12px',
+                  borderRadius: '8px',
+                  border: providerType === 'RESEND_API' ? '2px solid #0284c7' : '1px solid var(--border-color, #cbd5e1)',
+                  background: providerType === 'RESEND_API' ? 'rgba(14, 165, 233, 0.06)' : 'var(--input-bg, #ffffff)',
+                  color: 'var(--text-primary)',
+                  textAlign: 'left',
+                  cursor: 'pointer',
+                }}
+              >
+                <strong style={{ fontSize: '0.92rem', display: 'block', marginBottom: '4px', color: providerType === 'RESEND_API' ? '#0284c7' : 'inherit' }}>
+                  Resend API
+                </strong>
+                <small style={{ color: 'var(--text-muted)', fontSize: '0.76rem', display: 'block' }}>
+                  Port 443 &bull; 100/day free
+                </small>
+              </button>
+            </div>
+          </div>
+
           {/* Sender Display Name */}
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>
@@ -225,10 +311,10 @@ export default function UpdateSmtpCredentials() {
             </span>
           </div>
 
-          {/* Gmail Address */}
+          {/* Sender Email Address */}
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>
-              Gmail Address <span style={{ color: '#ef4444' }}>*</span>
+              {providerType === 'BREVO_API' ? 'Sender Email (Verified in Brevo)' : providerType === 'RESEND_API' ? 'Sender Email' : 'Gmail Address'} <span style={{ color: '#ef4444' }}>*</span>
             </label>
             <input
               type="email"
@@ -248,10 +334,10 @@ export default function UpdateSmtpCredentials() {
             />
           </div>
 
-          {/* New Gmail App Password */}
+          {/* New Password or API Key */}
           <div style={{ marginBottom: '20px' }}>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>
-              New 16-Digit Google App Password <span style={{ color: '#ef4444' }}>*</span>
+              {providerType === 'BREVO_API' ? 'Brevo API Key (starts with xkeysib-)' : providerType === 'RESEND_API' ? 'Resend API Key (starts with re_)' : 'New 16-Digit Google App Password'} <span style={{ color: '#ef4444' }}>*</span>
             </label>
             <div style={{ position: 'relative' }}>
               <input
@@ -259,7 +345,7 @@ export default function UpdateSmtpCredentials() {
                 required
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                placeholder="e.g. abcd efgh ijkl mnop"
+                placeholder={providerType === 'BREVO_API' ? 'xkeysib-...' : providerType === 'RESEND_API' ? 're_...' : 'e.g. abcd efgh ijkl mnop'}
                 style={{
                   width: '100%',
                   padding: '10px 42px 10px 14px',
@@ -285,27 +371,33 @@ export default function UpdateSmtpCredentials() {
                   color: 'var(--text-muted)',
                   fontSize: '1rem',
                 }}
-                title={showPassword ? 'Hide password' : 'Show password'}
+                title={showPassword ? 'Hide' : 'Show'}
               >
                 <i className={`bi ${showPassword ? 'bi-eye-slash' : 'bi-eye'}`}></i>
               </button>
             </div>
             <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '4px', display: 'block' }}>
-              Enter the 16-letter App Password generated from Google Account Security.
+              {providerType === 'BREVO_API' ? (
+                <span>Copy your free key from <a href="https://app.brevo.com/settings/keys/api" target="_blank" rel="noreferrer" style={{ color: '#2563eb', fontWeight: 600 }}>Brevo Dashboard ➔ SMTP & API</a></span>
+              ) : providerType === 'RESEND_API' ? (
+                <span>Copy key from <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" style={{ color: '#0284c7', fontWeight: 600 }}>Resend Dashboard</a></span>
+              ) : (
+                <span>16-character App Password generated from myaccount.google.com/apppasswords.</span>
+              )}
             </span>
           </div>
 
-          {/* Confirm App Password */}
-          <div style={{ marginBottom: '26px' }}>
+          {/* Confirm Password / Key */}
+          <div style={{ marginBottom: '24px' }}>
             <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, marginBottom: '6px', color: 'var(--text-primary)' }}>
-              Confirm App Password <span style={{ color: '#ef4444' }}>*</span>
+              Confirm Key / Password <span style={{ color: '#ef4444' }}>*</span>
             </label>
             <input
               type={showPassword ? 'text' : 'password'}
               required
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Re-enter the 16-digit Google App Password"
+              placeholder="Re-enter above key or password"
               style={{
                 width: '100%',
                 padding: '10px 14px',

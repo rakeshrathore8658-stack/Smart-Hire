@@ -83,6 +83,7 @@ public class DatabaseSchemaUpdater implements ApplicationRunner {
                     "sender_email VARCHAR(255) NOT NULL, " +
                     "app_password VARCHAR(500) NOT NULL, " +
                     "sender_name VARCHAR(150), " +
+                    "provider_type VARCHAR(50) DEFAULT 'GMAIL_SMTP', " +
                     "is_active BOOLEAN DEFAULT TRUE, " +
                     "is_verified BOOLEAN DEFAULT FALSE, " +
                     "last_tested_at TIMESTAMP, " +
@@ -90,6 +91,7 @@ public class DatabaseSchemaUpdater implements ApplicationRunner {
                     "updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, " +
                     "CONSTRAINT uq_hr_email_settings_user UNIQUE (hr_user_id)" +
                     ")");
+            jdbcTemplate.execute("ALTER TABLE hr_email_settings ADD COLUMN IF NOT EXISTS provider_type VARCHAR(50) DEFAULT 'GMAIL_SMTP'");
 
             // 2. HR Candidate-Facing Notification Preferences
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS hr_notification_preferences (" +
