@@ -25,7 +25,12 @@ public class DatabaseSchemaUpdater implements ApplicationRunner {
             jdbcTemplate.execute("ALTER TABLE users ALTER COLUMN avatar_url TYPE TEXT");
             jdbcTemplate.execute("ALTER TABLE users ALTER COLUMN google_id TYPE VARCHAR(255)");
             jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS role_switch_count INT DEFAULT 0");
-            log.info("Database schema check completed: avatar_url is TEXT, google_id is VARCHAR(255), role_switch_count is INT.");
+            jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS email_verified BOOLEAN DEFAULT TRUE");
+            jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token VARCHAR(120)");
+            jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS verification_token_expiry TIMESTAMP");
+            jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_password_token VARCHAR(120)");
+            jdbcTemplate.execute("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_password_token_expiry TIMESTAMP");
+            log.info("Database schema check completed: users auth & email verification columns verified.");
         } catch (Exception e) {
             log.info("Database schema update note (users): {}", e.getMessage());
         }

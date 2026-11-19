@@ -158,16 +158,18 @@ export const AuthProvider = ({ children }) => {
 
   const register = async (registerData) => {
     const response = await api.post('/auth/register', registerData);
-    if (response.data && response.data.success && response.data.user) {
-      const u = response.data.user;
-      const token = response.data.token;
-      setUser(u);
-      saveUserSession(u, token);
-      try {
-        sessionStorage.setItem('smarthire_first_login', 'true');
-      } catch (_) {}
-      if (u.themePreference) {
-        setTheme(u.themePreference, false);
+    if (response.data && response.data.success) {
+      if (response.data.user && !response.data.requiresVerification) {
+        const u = response.data.user;
+        const token = response.data.token;
+        setUser(u);
+        saveUserSession(u, token);
+        try {
+          sessionStorage.setItem('smarthire_first_login', 'true');
+        } catch (_) {}
+        if (u.themePreference) {
+          setTheme(u.themePreference, false);
+        }
       }
       return response.data;
     }

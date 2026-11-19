@@ -19,6 +19,7 @@ public class AuthService {
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
+    private final SystemEmailService systemEmailService;
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.smarthire.repository.ResumeRepository resumeRepository;
@@ -27,9 +28,10 @@ public class AuthService {
     private com.smarthire.repository.ResumeAnalysisRepository resumeAnalysisRepository;
 
     @org.springframework.beans.factory.annotation.Autowired
-    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
+    public AuthService(UserRepository userRepository, PasswordEncoder passwordEncoder, SystemEmailService systemEmailService) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
+        this.systemEmailService = systemEmailService;
     }
 
     /**
@@ -95,6 +97,10 @@ public class AuthService {
                 : ("HR".equalsIgnoreCase(assignedRole) ? "HR / Recruiter" : "General"));
         user.setCompanyName(request.getCompanyName() != null ? request.getCompanyName().trim() : null);
         user.setTermsAccepted(true);
+        user.setEmailVerified(false);
+        String verificationToken = java.util.UUID.randomUUID().toString();
+        user.setVerificationToken(verificationToken);
+        user.setVerificationTokenExpiry(java.time.LocalDateTime.now().plusHours(24));
         user.setTourCompleted(false);
         user.setTourSkipped(false);
         user.setTourSeen(false);
@@ -104,6 +110,13 @@ public class AuthService {
         if ("USER".equalsIgnoreCase(saved.getRole())) {
             linkExistingCandidateResumes(saved);
         }
+
+        try {
+            systemEmailService.sendVerificationEmail(saved, verificationToken);
+        } catch (Exception ex) {
+            log.error("Could not send registration verification email to [{}]: {}", saved.getEmail(), ex.getMessage());
+        }
+
         return saved;
     }
 
@@ -224,6 +237,7 @@ public class AuthService {
         newUser.setPasswordHash(passwordEncoder.encode(java.util.UUID.randomUUID().toString()));
         newUser.setRole(assignedRole);
         newUser.setCareerRole("HR".equalsIgnoreCase(assignedRole) ? "HR / Recruiter" : "Job Seeker");
+        newUser.setEmailVerified(true);
         newUser.setTermsAccepted(true);
         newUser.setTourCompleted(false);
         newUser.setTourSkipped(false);
@@ -275,6 +289,83 @@ public class AuthService {
             }
         }
         return Optional.empty();
+    }
+
+    /**
+     * Verifies user email with the given token.
+     */
+    @Transactional
+    public boolean verifyEmailToken(String token) {
+        if (token == null || token.isBlank()) return false;
+        Optional<User> userOpt = userRepository.findByVerificationToken(token.trim());
+        if (userOpt.isEmpty()) return false;
+        User user = userOpt.get();
+        if (user.getVerificationTokenExpiry() != null && user.getVerificationTokenExpiry().isBefore(java.time.LocalDateTime.now())) {
+            log.warn("Email verification token expired for user [{}]", user.getEmail());
+            return false;
+        }
+        user.setEmailVerified(true);
+        user.setVerificationToken(null);
+        user.setVerificationTokenExpiry(null);
+        userRepository.save(user);
+        log.info("Email verified successfully for user [{}]", user.getEmail());
+        return true;
+    }
+
+    /**
+     * Resends email verification link for unverified users.
+     */
+    @Transactional
+    public boolean resendVerificationEmail(String email) {
+        if (email == null || email.isBlank()) return false;
+        Optional<User> userOpt = findByEmail(email.trim().toLowerCase());
+        if (userOpt.isEmpty()) return false;
+        User user = userOpt.get();
+        if (Boolean.TRUE.equals(user.getEmailVerified())) {
+            return true;
+        }
+        String token = java.util.UUID.randomUUID().toString();
+        user.setVerificationToken(token);
+        user.setVerificationTokenExpiry(java.time.LocalDateTime.now().plusHours(24));
+        userRepository.save(user);
+        return systemEmailService.sendVerificationEmail(user, token);
+    }
+
+    /**
+     * Generates password reset token and sends email.
+     */
+    @Transactional
+    public boolean initiatePasswordReset(String email) {
+        if (email == null || email.isBlank()) return false;
+        Optional<User> userOpt = findByEmail(email.trim().toLowerCase());
+        if (userOpt.isEmpty()) return false;
+        User user = userOpt.get();
+        String token = java.util.UUID.randomUUID().toString();
+        user.setResetPasswordToken(token);
+        user.setResetPasswordTokenExpiry(java.time.LocalDateTime.now().plusHours(1));
+        userRepository.save(user);
+        return systemEmailService.sendPasswordResetEmail(user, token);
+    }
+
+    /**
+     * Resets password using token.
+     */
+    @Transactional
+    public boolean resetPasswordWithToken(String token, String newPassword) {
+        if (token == null || token.isBlank() || newPassword == null || newPassword.isBlank()) return false;
+        Optional<User> userOpt = userRepository.findByResetPasswordToken(token.trim());
+        if (userOpt.isEmpty()) return false;
+        User user = userOpt.get();
+        if (user.getResetPasswordTokenExpiry() != null && user.getResetPasswordTokenExpiry().isBefore(java.time.LocalDateTime.now())) {
+            log.warn("Password reset token expired for user [{}]", user.getEmail());
+            return false;
+        }
+        user.setPasswordHash(passwordEncoder.encode(newPassword));
+        user.setResetPasswordToken(null);
+        user.setResetPasswordTokenExpiry(null);
+        userRepository.save(user);
+        log.info("Password successfully updated via reset token for user [{}]", user.getEmail());
+        return true;
     }
 
     /**

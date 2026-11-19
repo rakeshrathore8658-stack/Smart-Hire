@@ -1,39 +1,36 @@
 import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import api from '../../api/client';
 
-const ForgotPassword = () => {
+export default function ForgotPassword() {
   const [email, setEmail] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [showNewPassword, setShowNewPassword] = useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
-
-  const navigate = useNavigate();
+  const [emailSent, setEmailSent] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMessage('');
+    setSuccessMessage('');
 
-    if (newPassword !== confirmPassword) {
-      setErrorMessage('Passwords do not match. Please verify and try again.');
+    const cleanEmail = email.trim().toLowerCase();
+    if (!cleanEmail || !cleanEmail.includes('@')) {
+      setErrorMessage('Please enter a valid email address.');
       return;
     }
 
     setLoading(true);
 
     try {
-      await api.post('/auth/forgot-password', {
-        email,
-        newPassword,
-        confirmPassword,
-      });
-      navigate('/login?reset=true');
+      const res = await api.post('/auth/forgot-password', { email: cleanEmail });
+      setEmailSent(true);
+      setSuccessMessage(
+        res.data?.message || 'If an account exists with this email address, a password reset link has been sent to your inbox.'
+      );
     } catch (err) {
       setErrorMessage(
-        err.response?.data?.message || err.message || 'Unable to reset password. Please verify the email.'
+        err.response?.data?.message || err.message || 'Unable to send password reset link. Please check your email and try again.'
       );
     } finally {
       setLoading(false);
@@ -57,8 +54,7 @@ const ForgotPassword = () => {
             <span>Access Recovery.</span>
           </h1>
           <p>
-            Reset your password securely to regain access to your saved resume analysis history,
-            candidate pipeline, and career benchmarks.
+            Reset your password securely via email to regain access to your saved resume analysis history, candidate pipeline, and career benchmarks.
           </p>
 
           <div className="auth-benefits">
@@ -70,15 +66,15 @@ const ForgotPassword = () => {
             </div>
             <div className="auth-benefit">
               <span className="benefit-check" aria-hidden="true">
-                <i className="bi bi-lock"></i>
+                <i className="bi bi-envelope-check-fill"></i>
               </span>
-              <span>Protected Account Authentication</span>
+              <span>One-Time Email Reset Links</span>
             </div>
             <div className="auth-benefit">
               <span className="benefit-check" aria-hidden="true">
-                <i className="bi bi-arrow-repeat"></i>
+                <i className="bi bi-lock-fill"></i>
               </span>
-              <span>Instant Password Synchronization</span>
+              <span>Automatic Token Expiry Protection</span>
             </div>
           </div>
         </div>
@@ -98,168 +94,166 @@ const ForgotPassword = () => {
               textDecoration: 'none',
               fontSize: '0.88rem',
               fontWeight: 600,
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
             }}
           >
-            &larr; Back to Login
+            <i className="bi bi-arrow-left"></i> Back to Sign In
           </Link>
         </div>
 
-        <div className="auth-box">
-          {/* ERROR NOTIFICATION */}
-          {errorMessage && (
-            <div
-              className="alert alert-danger"
-              style={{
-                marginBottom: '22px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '12px',
-                padding: '12px 16px',
-                borderRadius: 'var(--radius-md)',
-                background: 'var(--danger-bg)',
-                color: 'var(--danger)',
-                border: '1px solid rgba(220, 38, 38, 0.3)',
-              }}
-            >
-              <span style={{ fontSize: '1.3rem', display: 'flex' }} aria-hidden="true">
-                <i className="bi bi-exclamation-triangle-fill"></i>
-              </span>
-              <div>
-                <strong style={{ display: 'block', fontSize: '0.9rem' }}>Reset Failed</strong>
-                <span style={{ fontSize: '0.8rem' }}>{errorMessage}</span>
+        <div className="auth-form-wrapper" style={{ maxWidth: '440px', margin: '0 auto' }}>
+          {emailSent ? (
+            <div style={{ textAlign: 'center', padding: '20px 0' }}>
+              <div
+                style={{
+                  width: '68px',
+                  height: '68px',
+                  borderRadius: '50%',
+                  background: 'rgba(34, 197, 94, 0.12)',
+                  color: '#16a34a',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '2.2rem',
+                  marginBottom: '18px',
+                }}
+              >
+                <i className="bi bi-envelope-check-fill"></i>
               </div>
-            </div>
-          )}
-
-          <span
-            className="eyebrow"
-            style={{
-              color: 'var(--accent)',
-              fontWeight: 800,
-              fontSize: '0.75rem',
-              letterSpacing: '0.08em',
-              display: 'block',
-            }}
-          >
-            SECURITY RECOVERY
-          </span>
-          <h2 className="auth-heading">Reset Password</h2>
-          <p className="auth-description">
-            Enter your registered email address along with your new password.
-          </p>
-
-          {/* RESET FORM */}
-          <form id="forgotPasswordForm" onSubmit={handleSubmit}>
-            {/* Email Address */}
-            <div className="form-group">
-              <label className="form-label" htmlFor="email">
-                Registered Email Address
-              </label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                className="form-control"
-                placeholder="you@example.com"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-              />
-            </div>
-
-            {/* New Password */}
-            <div className="form-group">
-              <label className="form-label" htmlFor="newPassword">
-                New Password
-              </label>
-              <div className="password-wrapper">
-                <input
-                  type={showNewPassword ? 'text' : 'password'}
-                  id="newPassword"
-                  name="newPassword"
-                  className="form-control"
-                  placeholder="At least 8 characters"
-                  minLength={8}
-                  required
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="password-toggle"
-                  id="toggleNewPwd"
-                  onClick={() => setShowNewPassword((prev) => !prev)}
-                >
-                  {showNewPassword ? 'Hide' : 'Show'}
-                </button>
+              <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 10px 0' }}>
+                Reset Link Sent!
+              </h1>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.94rem', lineHeight: '1.55', marginBottom: '24px' }}>
+                {successMessage}
+              </p>
+              <div
+                style={{
+                  background: '#f8fafc',
+                  border: '1px solid var(--border-color, #e2e8f0)',
+                  borderRadius: '8px',
+                  padding: '14px',
+                  marginBottom: '24px',
+                  fontSize: '0.85rem',
+                  color: 'var(--text-muted)',
+                }}
+              >
+                ⏱️ <strong>Note:</strong> The link will expire in 1 hour. Be sure to check your spam or promotions folder if you don't see it in a few minutes.
               </div>
-            </div>
-
-            {/* Confirm Password */}
-            <div className="form-group">
-              <label className="form-label" htmlFor="confirmPassword">
-                Confirm New Password
-              </label>
-              <div className="password-wrapper">
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  className="form-control"
-                  placeholder="Repeat new password"
-                  minLength={8}
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                />
-                <button
-                  type="button"
-                  className="password-toggle"
-                  id="toggleConfirmPwd"
-                  onClick={() => setShowConfirmPassword((prev) => !prev)}
-                >
-                  {showConfirmPassword ? 'Hide' : 'Show'}
-                </button>
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <button
-              type="submit"
-              className="btn btn-primary btn-block"
-              disabled={loading}
-              style={{
-                padding: '12px',
-                fontSize: '0.95rem',
-                fontWeight: 700,
-                marginTop: '10px',
-                width: '100%',
-              }}
-            >
-              {loading ? 'Updating Password...' : 'Update Password & Return to Login →'}
-            </button>
-
-            <p
-              style={{
-                textAlign: 'center',
-                marginTop: '24px',
-                fontSize: '0.85rem',
-                color: 'var(--text-secondary)',
-              }}
-            >
-              Remember your password?{' '}
               <Link
                 to="/login"
-                style={{ color: 'var(--accent)', fontWeight: 700, textDecoration: 'none' }}
+                className="btn btn-primary"
+                style={{
+                  display: 'inline-block',
+                  width: '100%',
+                  padding: '12px',
+                  fontWeight: 700,
+                  fontSize: '0.95rem',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #FF7900 0%, #EA580C 100%)',
+                  color: '#ffffff',
+                  textDecoration: 'none',
+                }}
               >
-                Log in
+                Return to Sign In
               </Link>
-            </p>
-          </form>
+            </div>
+          ) : (
+            <div>
+              <div style={{ marginBottom: '24px', textAlign: 'center' }}>
+                <div
+                  style={{
+                    width: '60px',
+                    height: '60px',
+                    borderRadius: '50%',
+                    background: 'rgba(255, 121, 0, 0.1)',
+                    color: 'var(--accent, #FF7900)',
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: '1.8rem',
+                    marginBottom: '14px',
+                  }}
+                >
+                  <i className="bi bi-shield-lock-fill"></i>
+                </div>
+                <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 6px 0' }}>
+                  Forgot Password?
+                </h1>
+                <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Enter your registered account email and we'll send you a secure link to reset your password.
+                </p>
+              </div>
+
+              {errorMessage && (
+                <div
+                  className="alert alert-danger"
+                  style={{
+                    padding: '12px 16px',
+                    borderRadius: '8px',
+                    marginBottom: '18px',
+                    fontSize: '0.88rem',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px',
+                    backgroundColor: '#fef2f2',
+                    color: '#991b1b',
+                    border: '1px solid #fca5a5',
+                  }}
+                >
+                  <i className="bi bi-exclamation-triangle-fill"></i>
+                  <span>{errorMessage}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSubmit}>
+                <div style={{ marginBottom: '22px' }}>
+                  <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 700, marginBottom: '6px', color: 'var(--text-primary)' }}>
+                    Registered Email Address <span style={{ color: '#ef4444' }}>*</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="name@company.com"
+                    style={{
+                      width: '100%',
+                      padding: '11px 14px',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border-color, #cbd5e1)',
+                      backgroundColor: 'var(--input-bg, #ffffff)',
+                      color: 'var(--text-primary)',
+                      fontSize: '0.92rem',
+                    }}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={loading}
+                  className="btn btn-primary"
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    fontWeight: 700,
+                    fontSize: '1rem',
+                    borderRadius: '8px',
+                    background: 'linear-gradient(135deg, #FF7900 0%, #EA580C 100%)',
+                    color: '#ffffff',
+                    border: 'none',
+                    cursor: loading ? 'not-allowed' : 'pointer',
+                    boxShadow: '0 4px 14px rgba(255, 121, 0, 0.3)',
+                  }}
+                >
+                  {loading ? 'Sending Reset Link...' : 'Send Password Reset Link'}
+                </button>
+              </form>
+            </div>
+          )}
         </div>
       </section>
     </main>
   );
-};
-
-export default ForgotPassword;
+}

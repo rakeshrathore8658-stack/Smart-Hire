@@ -26,4 +26,10 @@ public interface UserRepository extends JpaRepository<User, Long>
 
     // Find users by single role
     List<User> findByRoleIgnoreCase(String role);
+
+    // Find user by email verification token
+    Optional<User> findByVerificationToken(String verificationToken);
+
+    // Find user by password reset token
+    Optional<User> findByResetPasswordToken(String resetPasswordToken);
 }

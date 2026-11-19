@@ -22,6 +22,10 @@ const Register = () => {
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [dbJobs, setDbJobs] = useState([]);
+  const [verificationSent, setVerificationSent] = useState(false);
+  const [registeredEmail, setRegisteredEmail] = useState('');
+  const [resending, setResending] = useState(false);
+  const [resendStatus, setResendStatus] = useState(null);
 
   const { register } = useAuth();
   const navigate = useNavigate();
@@ -123,7 +127,10 @@ const Register = () => {
       };
 
       const data = await register(payload);
-      if (data.user?.role === 'HR' || data.user?.role === 'RECRUITER') {
+      if (data?.requiresVerification) {
+        setRegisteredEmail(email.trim().toLowerCase());
+        setVerificationSent(true);
+      } else if (data.user?.role === 'HR' || data.user?.role === 'RECRUITER') {
         navigate('/dashboard/hr');
       } else {
         navigate('/dashboard');
@@ -134,6 +141,26 @@ const Register = () => {
       );
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!registeredEmail) return;
+    try {
+      setResending(true);
+      setResendStatus(null);
+      const res = await api.post('/auth/resend-verification', { email: registeredEmail });
+      setResendStatus({
+        type: 'success',
+        message: res.data?.message || 'New verification link sent! Please check your inbox.',
+      });
+    } catch (err) {
+      setResendStatus({
+        type: 'danger',
+        message: err.response?.data?.message || 'Could not resend email. Please try again later.',
+      });
+    } finally {
+      setResending(false);
     }
   };
 
@@ -288,8 +315,79 @@ const Register = () => {
         </div>
 
         <div className="register-box">
-          {/* REGISTRATION ERROR NOTIFICATION */}
-          {errorMessage && (
+          {verificationSent ? (
+            <div style={{ textAlign: 'center', padding: '24px 10px' }}>
+              <div
+                style={{
+                  width: '72px',
+                  height: '72px',
+                  borderRadius: '50%',
+                  background: 'rgba(34, 197, 94, 0.12)',
+                  color: '#16a34a',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontSize: '2.4rem',
+                  marginBottom: '20px',
+                }}
+              >
+                <i className="bi bi-envelope-check-fill"></i>
+              </div>
+              <h2 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 10px 0' }}>
+                Verify Your Email! ✉️
+              </h2>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.94rem', lineHeight: '1.55', marginBottom: '20px' }}>
+                We have sent an activation link to <strong>{registeredEmail}</strong>. Please check your inbox and click the link to activate your SmartHire account.
+              </p>
+
+              {resendStatus && (
+                <div
+                  style={{
+                    padding: '10px 14px',
+                    borderRadius: '8px',
+                    marginBottom: '16px',
+                    fontSize: '0.86rem',
+                    background: resendStatus.type === 'success' ? '#f0fdf4' : '#fef2f2',
+                    color: resendStatus.type === 'success' ? '#166534' : '#991b1b',
+                    border: resendStatus.type === 'success' ? '1px solid #86efac' : '1px solid #fca5a5',
+                  }}
+                >
+                  {resendStatus.message}
+                </div>
+              )}
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '24px' }}>
+                <Link
+                  to="/login"
+                  className="btn btn-primary"
+                  style={{
+                    padding: '12px',
+                    fontWeight: 700,
+                    borderRadius: '8px',
+                    textDecoration: 'none',
+                    background: 'linear-gradient(135deg, #FF7900 0%, #EA580C 100%)',
+                    color: '#ffffff',
+                    textAlign: 'center',
+                    boxShadow: '0 4px 14px rgba(255, 121, 0, 0.3)',
+                  }}
+                >
+                  Proceed to Sign In
+                </Link>
+                <button
+                  type="button"
+                  disabled={resending}
+                  onClick={handleResendVerification}
+                  className="btn btn-outline-secondary"
+                  style={{ padding: '10px', fontSize: '0.88rem', fontWeight: 600, borderRadius: '8px' }}
+                >
+                  {resending ? 'Resending Link...' : 'Did not receive email? Resend'}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <>
+              {/* REGISTRATION ERROR NOTIFICATION */}
+              {errorMessage && (
             <div
               className="alert alert-danger"
               style={{
@@ -598,6 +696,8 @@ const Register = () => {
               </Link>
             </p>
           </form>
+            </>
+          )}
         </div>
       </section>
     </main>

@@ -147,6 +147,16 @@ public class AuthApiController {
             ));
         }
 
+        // Check if email verification is required
+        if (Boolean.FALSE.equals(user.getEmailVerified())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "success", false,
+                    "requiresVerification", true,
+                    "email", user.getEmail(),
+                    "message", "Your email address is not verified yet. Please check your inbox for the verification link sent to " + user.getEmail() + " or click 'Resend Verification Link'."
+            ));
+        }
+
         establishSession(request, response, session, user, userDbRole);
 
         String token = jwtUtil.generateToken(user);
@@ -168,16 +178,11 @@ public class AuthApiController {
     ) {
         try {
             User registered = authService.register(registerRequest);
-            String role = registered.getRole() != null ? registered.getRole().toUpperCase() : "USER";
-            establishSession(request, response, session, registered, role);
-
-            String token = jwtUtil.generateToken(registered);
-
             return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                     "success", true,
-                    "message", "Account registered successfully",
-                    "token", token,
-                    "user", mapUser(registered)
+                    "requiresVerification", true,
+                    "email", registered.getEmail(),
+                    "message", "Account registered successfully! A verification link has been sent to " + registered.getEmail() + ". Please check your inbox to activate your account."
             ));
         } catch (IllegalArgumentException e) {
             return ResponseEntity.badRequest().body(Map.of(
@@ -336,37 +341,133 @@ public class AuthApiController {
         }
     }
 
+    /**
+     * GET /api/auth/verify-email?token=...
+     * Activates user account after email verification link is clicked.
+     */
+    @GetMapping("/verify-email")
+    public ResponseEntity<?> verifyEmail(@RequestParam("token") String token) {
+        if (token == null || token.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Verification token is required."
+            ));
+        }
+
+        boolean verified = authService.verifyEmailToken(token.trim());
+        if (verified) {
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "message", "Email verified successfully! You can now sign in to your SmartHire account."
+            ));
+        } else {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "This verification link is invalid or has expired (24 hours). Please request a new verification email."
+            ));
+        }
+    }
+
+    /**
+     * POST /api/auth/resend-verification
+     * Resends email verification link to user's registered email address.
+     */
+    @PostMapping("/resend-verification")
+    public ResponseEntity<?> resendVerification(@RequestBody Map<String, String> body) {
+        String email = body != null ? body.get("email") : null;
+        if (email == null || email.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "success", false,
+                    "message", "Email address is required."
+            ));
+        }
+
+        authService.resendVerificationEmail(email.trim().toLowerCase());
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "If an unverified account exists for " + email.trim() + ", a new verification link has been sent to your inbox."
+        ));
+    }
+
+    /**
+     * POST /api/auth/forgot-password
+     * Generates a password reset link and emails it to the user.
+     */
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> body) {
+        if (body == null) body = Collections.emptyMap();
         String email = body.get("email");
+        String token = body.get("token");
         String newPassword = body.get("newPassword");
         String confirmPassword = body.get("confirmPassword");
 
-        if (email == null || email.isBlank() || newPassword == null || newPassword.isBlank()) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Email and new password are required."
-            ));
+        // Case 1: Token provided -> resetting password
+        if (token != null && !token.isBlank() && newPassword != null && !newPassword.isBlank()) {
+            if (confirmPassword != null && !newPassword.equals(confirmPassword)) {
+                return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Passwords do not match."));
+            }
+            boolean reset = authService.resetPasswordWithToken(token.trim(), newPassword);
+            if (reset) {
+                return ResponseEntity.ok(Map.of("success", true, "message", "Password updated successfully. You can now login with your new password."));
+            } else {
+                return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Reset link is invalid or has expired (1 hour). Please request a new link."));
+            }
         }
 
-        if (confirmPassword != null && !newPassword.equals(confirmPassword)) {
-            return ResponseEntity.badRequest().body(Map.of(
-                    "success", false,
-                    "message", "Passwords do not match."
-            ));
-        }
-
-        boolean reset = authService.resetPassword(email.trim().toLowerCase(), newPassword);
-        if (reset) {
+        // Case 2: Only email provided -> sending reset link via email
+        if (email != null && !email.isBlank() && (newPassword == null || newPassword.isBlank())) {
+            authService.initiatePasswordReset(email.trim().toLowerCase());
             return ResponseEntity.ok(Map.of(
                     "success", true,
-                    "message", "Password reset successfully. You can now login with your new password."
+                    "message", "If an account with this email address exists, a password reset link has been sent to your inbox."
             ));
+        }
+
+        // Case 3: Legacy direct reset fallback
+        if (email != null && !email.isBlank() && newPassword != null && !newPassword.isBlank()) {
+            if (confirmPassword != null && !newPassword.equals(confirmPassword)) {
+                return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Passwords do not match."));
+            }
+            boolean reset = authService.resetPassword(email.trim().toLowerCase(), newPassword);
+            if (reset) {
+                return ResponseEntity.ok(Map.of("success", true, "message", "Password reset successfully. You can now login with your new password."));
+            } else {
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("success", false, "message", "No account registered with email: " + email));
+            }
+        }
+
+        return ResponseEntity.badRequest().body(Map.of(
+                "success", false,
+                "message", "Email address is required to send a password reset link."
+        ));
+    }
+
+    /**
+     * POST /api/auth/reset-password
+     * Resets password using the secure email token.
+     */
+    @PostMapping("/reset-password")
+    public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> body) {
+        if (body == null) body = Collections.emptyMap();
+        String token = body.get("token");
+        String newPassword = body.get("newPassword");
+        String confirmPassword = body.get("confirmPassword");
+
+        if (token == null || token.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Password reset token is required."));
+        }
+        if (newPassword == null || newPassword.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "New password is required."));
+        }
+        if (confirmPassword != null && !newPassword.equals(confirmPassword)) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Passwords do not match."));
+        }
+
+        boolean reset = authService.resetPasswordWithToken(token.trim(), newPassword);
+        if (reset) {
+            return ResponseEntity.ok(Map.of("success", true, "message", "Password reset successfully! You can now log in with your new password."));
         } else {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
-                    "success", false,
-                    "message", "No account registered with email: " + email
-            ));
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Password reset link is invalid or has expired (1 hour). Please request a new link."));
         }
     }
 }

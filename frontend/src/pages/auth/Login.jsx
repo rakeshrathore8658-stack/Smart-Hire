@@ -12,6 +12,9 @@ const Login = () => {
   const [errorMessage, setErrorMessage] = useState('');
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [unverifiedEmail, setUnverifiedEmail] = useState('');
+  const [resendingVerification, setResendingVerification] = useState(false);
+  const [resendNotification, setResendNotification] = useState('');
 
   const { login, fetchCurrentUser } = useAuth();
   const navigate = useNavigate();
@@ -115,7 +118,10 @@ const Login = () => {
         navigate('/dashboard');
       }
     } catch (err) {
-      if (err.response?.status === 405) {
+      if (err.response?.data?.requiresVerification) {
+        setUnverifiedEmail(err.response.data.email || email);
+        setErrorMessage(err.response.data.message || 'Your email address is not verified yet. Please check your inbox.');
+      } else if (err.response?.status === 405) {
         setErrorMessage(
           'Backend connection error (405 Method Not Allowed). If deployed on Vercel, please set VITE_API_BASE_URL to your Render backend URL in Vercel Project Settings and redeploy. If running locally, please ensure Spring Boot is running on port 8080.'
         );
@@ -126,6 +132,20 @@ const Login = () => {
       }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!unverifiedEmail) return;
+    try {
+      setResendingVerification(true);
+      setResendNotification('');
+      const res = await api.post('/auth/resend-verification', { email: unverifiedEmail });
+      setResendNotification(res.data?.message || 'Verification link sent! Please check your inbox.');
+    } catch (err) {
+      setResendNotification(err.response?.data?.message || 'Could not resend email. Please try again.');
+    } finally {
+      setResendingVerification(false);
     }
   };
 
@@ -331,6 +351,33 @@ const Login = () => {
                     >
                       <i className="bi bi-arrow-repeat"></i> Switch to {isHr ? 'Job Seeker' : 'HR / Recruiter'} Tab &amp; Sign In
                     </button>
+                  </div>
+                )}
+                {unverifiedEmail && (
+                  <div style={{ marginTop: '10px' }}>
+                    <button
+                      type="button"
+                      disabled={resendingVerification}
+                      className="btn btn-primary btn-sm"
+                      style={{
+                        padding: '6px 14px',
+                        fontSize: '0.82rem',
+                        fontWeight: 700,
+                        borderRadius: '6px',
+                        background: 'linear-gradient(135deg, #FF7900 0%, #EA580C 100%)',
+                        color: '#ffffff',
+                        border: 'none',
+                        cursor: resendingVerification ? 'not-allowed' : 'pointer',
+                      }}
+                      onClick={handleResendVerification}
+                    >
+                      {resendingVerification ? 'Sending Link...' : 'Resend Verification Email'}
+                    </button>
+                    {resendNotification && (
+                      <span style={{ display: 'block', marginTop: '6px', fontSize: '0.82rem', color: '#16a34a', fontWeight: 600 }}>
+                        {resendNotification}
+                      </span>
+                    )}
                   </div>
                 )}
               </div>
