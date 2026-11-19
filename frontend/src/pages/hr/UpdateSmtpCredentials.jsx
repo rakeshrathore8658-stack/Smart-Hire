@@ -28,8 +28,11 @@ export default function UpdateSmtpCredentials() {
         if (data && data.senderName) {
           setSenderName(data.senderName);
         }
-        if (data && data.providerType) {
+        if (data && data.providerType && Boolean(data.isVerified)) {
           setProviderType(data.providerType);
+        } else {
+          // Default to BREVO_API for unverified configurations or Render Free Tier
+          setProviderType('BREVO_API');
         }
       } catch (err) {
         console.warn('Could not prefill email settings:', err);
@@ -37,6 +40,17 @@ export default function UpdateSmtpCredentials() {
     };
     fetchCurrent();
   }, []);
+
+  const handlePasswordChange = (val) => {
+    setNewPassword(val);
+    setConfirmPassword(val); // Auto-sync to prevent 70-character re-typing friction!
+    const clean = val.trim().toLowerCase();
+    if (clean.startsWith('xkeysib-') || clean.startsWith('xsmtpsib-') || clean.includes('brevo') || clean.length >= 45) {
+      setProviderType('BREVO_API');
+    } else if (clean.startsWith('re_') || clean.includes('resend')) {
+      setProviderType('RESEND_API');
+    }
+  };
 
   const validateInputs = () => {
     const email = senderEmail.trim().toLowerCase();
@@ -57,8 +71,8 @@ export default function UpdateSmtpCredentials() {
       setAlert({ type: 'danger', message: 'Google App Password must be 16 characters (e.g. abcd efgh ijkl mnop).' });
       return false;
     }
-    if (providerType === 'BREVO_API' && !cleanPwd.startsWith('xkeysib-') && cleanPwd.length < 20) {
-      setAlert({ type: 'danger', message: 'Brevo API keys start with "xkeysib-". Please copy the key from your Brevo Dashboard.' });
+    if (providerType === 'BREVO_API' && cleanPwd.length < 15) {
+      setAlert({ type: 'danger', message: 'Brevo API keys are longer than 15 characters (usually starts with xkeysib-). Please copy the key from your Brevo Dashboard.' });
       return false;
     }
     if (newPassword.trim() !== confirmPassword.trim()) {
@@ -344,7 +358,7 @@ export default function UpdateSmtpCredentials() {
                 type={showPassword ? 'text' : 'password'}
                 required
                 value={newPassword}
-                onChange={(e) => setNewPassword(e.target.value)}
+                onChange={(e) => handlePasswordChange(e.target.value)}
                 placeholder={providerType === 'BREVO_API' ? 'xkeysib-...' : providerType === 'RESEND_API' ? 're_...' : 'e.g. abcd efgh ijkl mnop'}
                 style={{
                   width: '100%',

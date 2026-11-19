@@ -215,6 +215,7 @@ public class HrEmailSettingsController {
         String emailToTest = null;
         String rawPasswordToTest = null;
         String senderNameToTest = null;
+        String providerTypeToTest = null;
 
         // If credentials supplied in request body, test them directly
         if (dto != null && dto.getSenderEmail() != null && !dto.getSenderEmail().isBlank()
@@ -222,6 +223,7 @@ public class HrEmailSettingsController {
             emailToTest = dto.getSenderEmail().trim();
             rawPasswordToTest = dto.getAppPassword().trim();
             senderNameToTest = dto.getSenderName() != null ? dto.getSenderName().trim() : hr.getFullName();
+            providerTypeToTest = dto.getProviderType();
         } else {
             // Otherwise, retrieve and decrypt saved credentials from database
             Optional<HrEmailSetting> settingOpt = hrEmailSettingRepository.findFirstByHrUserIdOrderByIdDesc(hr.getId());
@@ -229,30 +231,39 @@ public class HrEmailSettingsController {
                 return ResponseEntity.badRequest().body(Map.of(
                         "success", false,
                         "result", "CONFIGURATION_MISSING",
-                        "message", "No active SMTP settings found. Please configure your Gmail and App Password first."
+                        "message", "No active email settings found. Please configure your Brevo API Key or Gmail App Password first."
                 ));
             }
             HrEmailSetting setting = settingOpt.get();
             emailToTest = setting.getSenderEmail();
             rawPasswordToTest = encryptionService.decrypt(setting.getAppPassword());
             senderNameToTest = setting.getSenderName() != null ? setting.getSenderName() : hr.getFullName();
+            providerTypeToTest = setting.getProviderType();
         }
 
-        if (rawPasswordToTest == null || rawPasswordToTest.isBlank()) {
+        if ((rawPasswordToTest == null || rawPasswordToTest.isBlank()) && System.getenv("BREVO_API_KEY") == null) {
             return ResponseEntity.badRequest().body(Map.of(
                     "success", false,
                     "result", "CREDENTIALS_EMPTY",
-                    "message", "Gmail App Password is not set. Please re-enter your 16-character App Password."
+                    "message", "Email API Key or App Password is not set. Please enter your Brevo API key."
             ));
         }
 
         try {
-            boolean testSuccess = dynamicEmailService.testSmtpConnection(emailToTest, rawPasswordToTest, senderNameToTest);
+            boolean testSuccess = dynamicEmailService.testSmtpConnection(emailToTest, rawPasswordToTest, senderNameToTest, providerTypeToTest);
             if (testSuccess) {
+                // Determine resolved provider
+                final String resolvedProvider = (providerTypeToTest != null && !providerTypeToTest.isBlank())
+                        ? providerTypeToTest.trim().toUpperCase()
+                        : dynamicEmailService.resolveProvider(rawPasswordToTest);
+
                 // Mark verified in database
                 hrEmailSettingRepository.findFirstByHrUserIdOrderByIdDesc(hr.getId()).ifPresent(s -> {
                     s.setIsVerified(true);
                     s.setLastTestedAt(LocalDateTime.now());
+                    if (resolvedProvider != null) {
+                        s.setProviderType(resolvedProvider);
+                    }
                     hrEmailSettingRepository.save(s);
                 });
 
@@ -260,13 +271,14 @@ public class HrEmailSettingsController {
                         "success", true,
                         "result", "SUCCESS",
                         "verified", true,
-                        "message", "SMTP Connection verified successfully! A test email has been sent to " + emailToTest
+                        "providerType", resolvedProvider != null ? resolvedProvider : "BREVO_API",
+                        "message", "Email connection verified successfully (" + (resolvedProvider != null ? resolvedProvider : "BREVO_API") + ")! A test message has been sent to " + emailToTest
                 ));
             } else {
                 return ResponseEntity.badRequest().body(Map.of(
                         "success", false,
                         "result", "SMTP_ERROR",
-                        "message", "SMTP verification failed. Check credentials and retry."
+                        "message", "Email connection verification failed. Please check credentials and retry."
                 ));
             }
         } catch (org.springframework.mail.MailAuthenticationException ex) {

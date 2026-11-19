@@ -77,6 +77,7 @@ public class HrEmailSettingsTest {
                 .build();
 
         when(hrEmailSettingRepository.findByHrUserId(1L)).thenReturn(Optional.of(savedSetting));
+        when(hrEmailSettingRepository.findFirstByHrUserIdOrderByIdDesc(1L)).thenReturn(Optional.of(savedSetting));
         when(hrEmailSettingRepository.findByHrUserIdAndIsActiveTrue(1L)).thenReturn(Optional.of(savedSetting));
         when(hrEmailSettingRepository.save(any(HrEmailSetting.class))).thenReturn(savedSetting);
 
@@ -99,6 +100,6 @@ public class HrEmailSettingsTest {
         // Verify delete
         ResponseEntity<?> delRes = controller.deleteEmailSettings();
         assertTrue(delRes.getStatusCode().is2xxSuccessful());
-        verify(hrEmailSettingRepository).delete(savedSetting);
+        verify(hrEmailSettingRepository).deleteByHrUserId(1L);
     }
 }

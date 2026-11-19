@@ -39,10 +39,11 @@ public class DynamicEmailService {
     public String resolveProvider(String rawKeyOrPassword) {
         if (rawKeyOrPassword == null) return "GMAIL_SMTP";
         String clean = rawKeyOrPassword.trim();
-        if (clean.startsWith("xkeysib-")) {
+        String lower = clean.toLowerCase();
+        if (lower.startsWith("xkeysib-") || lower.startsWith("xsmtpsib-") || lower.contains("brevo") || clean.length() >= 45) {
             return "BREVO_API";
         }
-        if (clean.startsWith("re_")) {
+        if (lower.startsWith("re_") || lower.contains("resend")) {
             return "RESEND_API";
         }
         return "GMAIL_SMTP";
@@ -79,11 +80,30 @@ public class DynamicEmailService {
      * Encrypts and persists verified state upon success.
      */
     public boolean testSmtpConnection(String senderEmail, String rawAppPassword, String senderName) {
-        if (senderEmail == null || senderEmail.isBlank() || rawAppPassword == null || rawAppPassword.isBlank()) {
-            throw new IllegalArgumentException("Both sender email address and App Password or API Key are required.");
+        return testSmtpConnection(senderEmail, rawAppPassword, senderName, null);
+    }
+
+    /**
+     * Overloaded method that verifies email credentials against the specified or auto-detected provider.
+     * Supports Brevo HTTP API (Port 443), Resend API, and Gmail Direct SMTP (Port 587).
+     */
+    public boolean testSmtpConnection(String senderEmail, String rawAppPassword, String senderName, String providerType) {
+        if (senderEmail == null || senderEmail.isBlank()) {
+            throw new IllegalArgumentException("Sender email address is required.");
         }
 
-        String provider = resolveProvider(rawAppPassword);
+        String effectiveKey = (rawAppPassword != null && !rawAppPassword.isBlank())
+                ? rawAppPassword.trim()
+                : System.getenv("BREVO_API_KEY");
+
+        if (effectiveKey == null || effectiveKey.isBlank()) {
+            throw new IllegalArgumentException("App Password or API Key is required.");
+        }
+
+        String provider = (providerType != null && !providerType.isBlank())
+                ? providerType.trim().toUpperCase()
+                : resolveProvider(effectiveKey);
+
         String fromName = (senderName != null && !senderName.isBlank()) ? senderName.trim() : "SmartHire Notifications";
 
         String testBody = buildHtmlCard(
@@ -94,11 +114,13 @@ public class DynamicEmailService {
                 fromName
         );
 
+        String lowerKey = effectiveKey.toLowerCase();
+
         // 1. Brevo HTTP API (Port 443)
-        if ("BREVO_API".equals(provider) || rawAppPassword.trim().startsWith("xkeysib-")) {
+        if ("BREVO_API".equals(provider) || lowerKey.startsWith("xkeysib-") || lowerKey.startsWith("xsmtpsib-") || effectiveKey.length() >= 45) {
             log.info("Testing Brevo HTTP API connection for: {}", senderEmail);
             return httpEmailService.sendViaBrevo(
-                    rawAppPassword.trim(),
+                    effectiveKey,
                     senderEmail.trim(),
                     fromName,
                     senderEmail.trim(),
@@ -109,10 +131,10 @@ public class DynamicEmailService {
         }
 
         // 2. Resend HTTP API (Port 443)
-        if ("RESEND_API".equals(provider) || rawAppPassword.trim().startsWith("re_")) {
+        if ("RESEND_API".equals(provider) || lowerKey.startsWith("re_")) {
             log.info("Testing Resend HTTP API connection for: {}", senderEmail);
             return httpEmailService.sendViaResend(
-                    rawAppPassword.trim(),
+                    effectiveKey,
                     senderEmail.trim(),
                     fromName,
                     senderEmail.trim(),
@@ -121,8 +143,8 @@ public class DynamicEmailService {
             );
         }
 
-        // 3. Gmail Direct SMTP (Port 587)
-        JavaMailSenderImpl mailSender = createMailSender(senderEmail, rawAppPassword);
+        // 3. Gmail Direct SMTP (Port 587) with smart fallback
+        JavaMailSenderImpl mailSender = createMailSender(senderEmail, effectiveKey);
         try {
             MimeMessage message = mailSender.createMimeMessage();
             MimeMessageHelper helper = new MimeMessageHelper(message, true, "UTF-8");
@@ -142,8 +164,28 @@ public class DynamicEmailService {
         } catch (Exception ex) {
             String msg = ex.getMessage() != null ? ex.getMessage() : "";
             log.error("SMTP error for HR email [{}]: {}", senderEmail, msg);
+
+            // Automatic fallback to BREVO_API_KEY environment variable if configured on Render
+            String envBrevo = System.getenv("BREVO_API_KEY");
+            if (envBrevo != null && !envBrevo.isBlank()) {
+                log.info("Direct SMTP failed on Port 587. Attempting automatic fallback using Render BREVO_API_KEY...");
+                try {
+                    return httpEmailService.sendViaBrevo(
+                            envBrevo.trim(),
+                            senderEmail.trim(),
+                            fromName,
+                            senderEmail.trim(),
+                            fromName,
+                            "SmartHire - Brevo HTTP Email Connection Test (Fallback)",
+                            testBody
+                    );
+                } catch (Exception brevoEx) {
+                    log.error("Brevo env fallback failed: {}", brevoEx.getMessage());
+                }
+            }
+
             if (msg.contains("timeout") || msg.contains("timed out") || msg.contains("ConnectException") || msg.contains("MailConnectException")) {
-                throw new RuntimeException("SMTP test failed: Connection timed out on port 587. Render Free Tier blocks outbound SMTP ports (25, 465, 587). Please use Brevo HTTP API (Port 443) by entering your free Brevo API key (starts with xkeysib-) in Email Settings.");
+                throw new RuntimeException("SMTP test failed: Connection timed out on port 587. Render Free Tier blocks outbound SMTP ports (25, 465, 587). Please select 'Brevo HTTP API' and enter your free Brevo API key (starts with xkeysib-) in Email Settings.");
             }
             throw new RuntimeException("SMTP test failed: " + msg);
         }
@@ -215,7 +257,8 @@ public class DynamicEmailService {
         String envResendKey = System.getenv("RESEND_API_KEY");
 
         // 1. Brevo HTTP API
-        if ("BREVO_API".equals(provider) || decryptedKeyOrPassword.startsWith("xkeysib-")) {
+        String lowerDecrypted = decryptedKeyOrPassword != null ? decryptedKeyOrPassword.toLowerCase().trim() : "";
+        if ("BREVO_API".equals(provider) || lowerDecrypted.startsWith("xkeysib-") || lowerDecrypted.startsWith("xsmtpsib-") || decryptedKeyOrPassword.trim().length() >= 45) {
             try {
                 boolean sent = httpEmailService.sendViaBrevo(
                         decryptedKeyOrPassword,

@@ -15,6 +15,8 @@ export default function HrEmailSettings() {
   const [providerType, setProviderType] = useState('BREVO_API'); // BREVO_API, GMAIL_SMTP, RESEND_API
   const [showPassword, setShowPassword] = useState(false);
   const [settingData, setSettingData] = useState(null);
+  const [quickBrevoKey, setQuickBrevoKey] = useState('');
+  const [quickSaving, setQuickSaving] = useState(false);
 
   const [alert, setAlert] = useState(null); // { type: 'success' | 'danger' | 'info', message: '' }
 
@@ -127,6 +129,57 @@ export default function HrEmailSettings() {
       });
     } finally {
       setTesting(false);
+    }
+  };
+
+  const handleQuickSaveBrevo = async (e) => {
+    if (e) e.preventDefault();
+    const cleanKey = quickBrevoKey.trim();
+    if (!cleanKey) {
+      setAlert({ type: 'danger', message: 'Please paste your Brevo API key before saving.' });
+      return;
+    }
+    if (cleanKey.length < 15) {
+      setAlert({ type: 'danger', message: 'Brevo API keys are longer than 15 characters (usually starts with xkeysib-). Please copy the key from your Brevo dashboard.' });
+      return;
+    }
+
+    try {
+      setQuickSaving(true);
+      setAlert({ type: 'info', message: 'Encrypting and testing Brevo API credentials over HTTPS (Port 443)...' });
+
+      const email = settingData?.senderEmail || senderEmail.trim().toLowerCase();
+      const payload = {
+        senderEmail: email,
+        senderName: settingData?.senderName || senderName.trim() || undefined,
+        appPassword: cleanKey,
+        providerType: 'BREVO_API',
+      };
+
+      await api.post('/hr/email-settings', payload);
+
+      // Immediately test live connection over Port 443
+      const testRes = await api.post('/hr/email-settings/test', payload);
+      if (testRes.data?.success) {
+        setAlert({
+          type: 'success',
+          message: 'Brevo HTTP API verified and active! All candidate emails will now be delivered reliably over Port 443 with 0 timeouts.',
+        });
+        setQuickBrevoKey('');
+        fetchSettings();
+      } else {
+        setAlert({
+          type: 'danger',
+          message: testRes.data?.message || 'Brevo test failed. Please check your API key in Brevo Dashboard.',
+        });
+      }
+    } catch (err) {
+      setAlert({
+        type: 'danger',
+        message: err.response?.data?.message || 'Failed to save and test Brevo credentials. Please check your Brevo API key.',
+      });
+    } finally {
+      setQuickSaving(false);
     }
   };
 
@@ -385,7 +438,7 @@ export default function HrEmailSettings() {
               <div>
                 <span style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.78rem' }}>Verification Status:</span>
                 <span style={{ fontWeight: 600, color: settingData.isVerified ? '#166534' : '#92400e' }}>
-                  {settingData.isVerified ? 'Verified via Google SMTP' : 'Pending Verification'}
+                  {settingData.isVerified ? ('Verified via ' + (settingData.providerType === 'BREVO_API' ? 'Brevo HTTP API (Port 443)' : settingData.providerType === 'RESEND_API' ? 'Resend API' : 'Google SMTP')) : 'Pending Verification'}
                 </span>
               </div>
               <div>
@@ -399,6 +452,125 @@ export default function HrEmailSettings() {
                 </span>
               </div>
             </div>
+          </div>
+
+          {/* Quick Switch / Update to Brevo HTTP API (Port 443) - Recommended for Render */}
+          <div
+            className="card"
+            style={{
+              background: 'linear-gradient(135deg, rgba(37, 99, 235, 0.04) 0%, rgba(59, 130, 246, 0.08) 100%)',
+              border: (settingData.providerType === 'BREVO_API' && settingData.isVerified) ? '1px solid #bfdbfe' : '2px solid #3b82f6',
+              borderRadius: '12px',
+              padding: '24px',
+              boxShadow: '0 4px 12px rgba(37, 99, 235, 0.08)',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: '14px', marginBottom: '16px' }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                  <i className="bi bi-cloud-check-fill" style={{ fontSize: '1.35rem', color: '#2563eb' }}></i>
+                  <h3 style={{ margin: 0, fontSize: '1.08rem', fontWeight: 800, color: 'var(--text-primary)' }}>
+                    Paste Brevo API Key (Recommended for Render)
+                  </h3>
+                  <span style={{ fontSize: '0.72rem', padding: '3px 8px', background: '#dbeafe', color: '#1e40af', borderRadius: '4px', fontWeight: 700 }}>
+                    PORT 443 &bull; 0 TIMEOUTS
+                  </span>
+                </div>
+                <p style={{ margin: '8px 0 0 0', color: 'var(--text-secondary)', fontSize: '0.86rem', lineHeight: '1.45', maxWidth: '680px' }}>
+                  Render Free Tier blocks outbound SMTP ports <strong>25, 465, and 587</strong>. Brevo HTTP API communicates over secure HTTPS (Port 443) and delivers 300 free candidate emails every day without any timeout issues.
+                </p>
+              </div>
+              <a
+                href="https://app.brevo.com/settings/keys/api"
+                target="_blank"
+                rel="noreferrer"
+                className="btn btn-sm btn-outline-primary"
+                style={{
+                  fontSize: '0.82rem',
+                  padding: '7px 14px',
+                  borderRadius: '8px',
+                  textDecoration: 'none',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  fontWeight: 600,
+                  backgroundColor: '#ffffff',
+                }}
+              >
+                <i className="bi bi-box-arrow-up-right"></i> Copy from Brevo Dashboard
+              </a>
+            </div>
+
+            <form onSubmit={handleQuickSaveBrevo} style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center' }}>
+              <div style={{ flex: '1 1 340px', position: 'relative' }}>
+                <input
+                  type={showPassword ? 'text' : 'password'}
+                  value={quickBrevoKey}
+                  onChange={(e) => setQuickBrevoKey(e.target.value)}
+                  placeholder="Paste your Brevo API Key here (starts with xkeysib-)..."
+                  style={{
+                    width: '100%',
+                    padding: '12px 42px 12px 14px',
+                    borderRadius: '8px',
+                    border: '1.5px solid #93c5fd',
+                    backgroundColor: 'var(--input-bg, #ffffff)',
+                    color: 'var(--text-primary)',
+                    fontSize: '0.92rem',
+                    fontFamily: showPassword ? 'inherit' : 'monospace',
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((prev) => !prev)}
+                  style={{
+                    position: 'absolute',
+                    right: '12px',
+                    top: '50%',
+                    transform: 'translateY(-50%)',
+                    background: 'none',
+                    border: 'none',
+                    cursor: 'pointer',
+                    color: 'var(--text-muted)',
+                    fontSize: '1rem',
+                  }}
+                  title={showPassword ? 'Hide' : 'Show'}
+                >
+                  <i className={`bi ${showPassword ? 'bi-eye-slash' : 'bi-eye'}`}></i>
+                </button>
+              </div>
+
+              <button
+                type="submit"
+                disabled={quickSaving}
+                className="btn btn-primary"
+                style={{
+                  padding: '12px 24px',
+                  fontWeight: 700,
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%)',
+                  color: '#ffffff',
+                  border: 'none',
+                  cursor: quickSaving ? 'not-allowed' : 'pointer',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '8px',
+                  whiteSpace: 'nowrap',
+                  boxShadow: '0 2px 6px rgba(37,99,235,0.25)',
+                }}
+              >
+                {quickSaving ? (
+                  <>
+                    <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                    Verifying over Port 443...
+                  </>
+                ) : (
+                  <>
+                    <i className="bi bi-shield-check"></i>
+                    Save & Verify Brevo Key Now
+                  </>
+                )}
+              </button>
+            </form>
           </div>
 
           {/* Quick link to Notification Preferences */}

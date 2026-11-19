@@ -92,6 +92,9 @@ public class DatabaseSchemaUpdater implements ApplicationRunner {
                     "CONSTRAINT uq_hr_email_settings_user UNIQUE (hr_user_id)" +
                     ")");
             jdbcTemplate.execute("ALTER TABLE hr_email_settings ADD COLUMN IF NOT EXISTS provider_type VARCHAR(50) DEFAULT 'GMAIL_SMTP'");
+            try {
+                jdbcTemplate.execute("ALTER TABLE hr_email_settings ALTER COLUMN app_password TYPE TEXT");
+            } catch (Exception ignored) {}
 
             // 2. HR Candidate-Facing Notification Preferences
             jdbcTemplate.execute("CREATE TABLE IF NOT EXISTS hr_notification_preferences (" +
