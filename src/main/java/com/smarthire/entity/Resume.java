@@ -31,6 +31,12 @@ public class Resume {
     @Column(name = "file_size")
     private Long fileSize;
 
+    @Column(name = "resume_url", length = 500)
+    private String resumeUrl;
+
+    @Column(name = "resume_public_id", length = 250)
+    private String resumePublicId;
+
     @JdbcTypeCode(SqlTypes.LONGVARCHAR)
     @Column(name = "original_text", columnDefinition = "TEXT")
     private String originalText;
@@ -63,17 +69,33 @@ public class Resume {
     @com.fasterxml.jackson.annotation.JsonIgnore
     private User user;
 
+    @Column(name = "user_id", insertable = false, updatable = false)
+    private Long userId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "recruiter_id")
     @com.fasterxml.jackson.annotation.JsonIgnore
     private User recruiter;
 
+    @Column(name = "recruiter_id", insertable = false, updatable = false)
+    private Long recruiterId;
+
     public Long getRecruiterId() {
-        return recruiter != null ? recruiter.getId() : null;
+        if (recruiter != null) return recruiter.getId();
+        return recruiterId;
     }
 
     public Long getUserId() {
-        return user != null ? user.getId() : null;
+        if (user != null) return user.getId();
+        return userId;
+    }
+
+    public String getContentType() {
+        return fileType;
+    }
+
+    public LocalDateTime getUploadedAt() {
+        return createdAt;
     }
 
     @Column(name = "created_at", nullable = false, updatable = false)

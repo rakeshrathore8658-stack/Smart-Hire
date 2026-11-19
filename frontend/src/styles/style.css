@@ -25,6 +25,8 @@ html[data-theme="light"] {
     --bg-secondary: #F6F8FB;
     --bg-tertiary: #EDF2F7;
     --bg-card: #FFFFFF;
+    --card-bg: #FFFFFF;
+    --table-header-bg: #F8FAFC;
     --bg-sidebar: #FFFFFF;
     --bg-input: #FFFFFF;
     --bg-hover: #F1F5F9;
@@ -73,6 +75,8 @@ html[data-theme="dark"] {
     --bg-secondary: #0B1220;
     --bg-tertiary: #1E293B;
     --bg-card: #1E293B;
+    --card-bg: #1E293B;
+    --table-header-bg: #172033;
     --bg-sidebar: #111827;
     --bg-input: #172033;
     --bg-hover: #263449;

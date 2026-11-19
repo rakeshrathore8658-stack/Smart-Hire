@@ -20,6 +20,12 @@ import Profile from './pages/Profile';
 import Notifications from './pages/Notifications';
 import Help from './pages/Help';
 
+// Settings Hierarchy Modular Pages
+import ProfileSettings from './pages/settings/ProfileSettings';
+import NotificationSettingsPage from './pages/settings/NotificationSettingsPage';
+import AppearanceSettingsPage from './pages/settings/AppearanceSettingsPage';
+import SecuritySettingsPage from './pages/settings/SecuritySettingsPage';
+
 // Job Seeker Pages
 import SeekerDashboard from './pages/seeker/Dashboard';
 import ResumeAnalyzer from './pages/seeker/ResumeAnalyzer';
@@ -41,6 +47,10 @@ import Shortlist from './pages/hr/Shortlist';
 import Interviews from './pages/hr/Interviews';
 import Feedback from './pages/hr/Feedback';
 import Reports from './pages/hr/Reports';
+import HrEmailSettings from './pages/hr/HrEmailSettings';
+import UpdateSmtpCredentials from './pages/hr/UpdateSmtpCredentials';
+import NotificationSettings from './pages/hr/NotificationSettings';
+import ApplicantDetails from './pages/hr/ApplicantDetails';
 
 function RoleDashboard() {
   const { isHr } = useAuth();
@@ -85,6 +95,7 @@ export default function App() {
         <Route path="jobs/:id/edit" element={<JobForm />} />
         <Route path="jobs/:id" element={<JobDetails />} />
         <Route path="applications" element={<Applications />} />
+        <Route path="applications/:id" element={<ApplicantDetails />} />
         <Route path="candidates" element={<Candidates />} />
         <Route path="candidates/recently-deleted" element={<RecentlyDeletedCandidates />} />
         <Route path="recently-deleted" element={<RecentlyDeletedCandidates />} />
@@ -98,7 +109,16 @@ export default function App() {
 
         {/* Shared Account & Preferences */}
         <Route path="profile" element={<Profile />} />
-        <Route path="settings" element={<Settings />} />
+        <Route path="settings" element={<ProfileSettings />} />
+        <Route path="settings/profile" element={<ProfileSettings />} />
+        <Route path="settings/notifications" element={<NotificationSettingsPage />} />
+        <Route path="settings/appearance" element={<AppearanceSettingsPage />} />
+        <Route path="settings/security" element={<SecuritySettingsPage />} />
+        <Route path="settings/security/email" element={<SecuritySettingsPage />} />
+        <Route path="settings/security/account" element={<SecuritySettingsPage />} />
+        <Route path="settings/security/delete" element={<SecuritySettingsPage />} />
+        <Route path="settings/email" element={<SecuritySettingsPage />} />
+        <Route path="settings/email/update" element={<UpdateSmtpCredentials />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="help" element={<Help />} />
       </Route>

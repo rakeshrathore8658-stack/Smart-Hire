@@ -30,9 +30,10 @@ public class JobApiController {
     private final ResumeAnalysisRepository resumeAnalysisRepository;
     private final UserRepository userRepository;
     private final NotificationService notificationService;
+    private final com.smarthire.service.JobScreeningService jobScreeningService;
 
     @GetMapping
-    public ResponseEntity<?> getAllJobs() {
+    public ResponseEntity<?> getAllJobs(@RequestParam(value = "scope", required = false) String scope) {
         try {
             User currentUser = SecurityUtils.getCurrentUser(userRepository).orElse(null);
             boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
@@ -40,16 +41,30 @@ public class JobApiController {
             List<Job> jobs;
             List<ResumeAnalysis> relevantAnalyses;
 
-            if (isHr) {
-                // HR only views and manages their own job requisitions (and seed jobs)
-                jobs = jobService.getJobsByRecruiter(currentUser.getId());
-                relevantAnalyses = resumeAnalysisRepository.findByRecruiterIdOrderByCreatedAtDesc(currentUser.getId());
+            if (isHr && !"all".equalsIgnoreCase(scope)) {
+                // HR views and manages their own job requisitions (and seed/unassigned jobs)
+                jobs = jobService.getJobsByRecruiter(currentUser != null ? currentUser.getId() : null);
+                try {
+                    relevantAnalyses = (currentUser != null && currentUser.getId() != null)
+                            ? resumeAnalysisRepository.findByRecruiterIdOrderByCreatedAtDesc(currentUser.getId())
+                            : Collections.emptyList();
+                } catch (Exception e) {
+                    log.warn("Error fetching HR resume analyses for job counts: {}", e.getMessage());
+                    relevantAnalyses = Collections.emptyList();
+                }
             } else {
-                // Candidates and Guests view open job opportunities
-                jobs = jobService.getJobsForUser(currentUser);
-                relevantAnalyses = (currentUser != null)
-                        ? resumeAnalysisRepository.findAllForUser(currentUser.getId(), currentUser.getEmail())
-                        : Collections.emptyList();
+                // All active vacancies for candidates, guests, or HR exploring full vacancy directory
+                jobs = "all".equalsIgnoreCase(scope) ? jobService.getAllJobs() : jobService.getJobsForUser(currentUser);
+                try {
+                    relevantAnalyses = (currentUser != null)
+                            ? (isHr
+                                ? resumeAnalysisRepository.findByRecruiterIdOrderByCreatedAtDesc(currentUser.getId())
+                                : resumeAnalysisRepository.findAllForUser(currentUser.getId(), currentUser.getEmail()))
+                            : Collections.emptyList();
+                } catch (Exception e) {
+                    log.warn("Error fetching user resume analyses: {}", e.getMessage());
+                    relevantAnalyses = Collections.emptyList();
+                }
             }
 
             for (Job job : jobs) {
@@ -79,8 +94,14 @@ public class JobApiController {
 
     @GetMapping("/departments")
     public ResponseEntity<?> getDepartments() {
-        List<String> depts = jobService.getAllDepartments();
-        return ResponseEntity.ok(Map.of("departments", depts, "total", depts.size()));
+        User currentUser = SecurityUtils.getCurrentUser(userRepository).orElse(null);
+        List<String> depts = jobService.getAllDepartments(currentUser);
+        List<String> customDepts = jobService.getCustomDepartments(currentUser);
+        return ResponseEntity.ok(Map.of(
+                "departments", depts,
+                "customDepartments", customDepts,
+                "total", depts.size()
+        ));
     }
 
     @PostMapping("/departments")
@@ -89,12 +110,37 @@ public class JobApiController {
         if (name == null || name.trim().isBlank()) {
             return ResponseEntity.badRequest().body(Map.of("message", "Department name is required"));
         }
-        com.smarthire.entity.Department saved = jobService.addDepartment(name.trim());
+        User currentUser = SecurityUtils.getCurrentUser(userRepository).orElse(null);
+        com.smarthire.entity.Department saved = jobService.addDepartment(name.trim(), currentUser);
         return ResponseEntity.status(HttpStatus.CREATED).body(Map.of(
                 "id", saved.getId() != null ? saved.getId() : 0,
                 "department", saved.getName(),
                 "message", "Department created successfully"
         ));
+    }
+
+    @DeleteMapping("/departments/{name}")
+    public ResponseEntity<?> deleteDepartment(@PathVariable("name") String name) {
+        User currentUser = SecurityUtils.getCurrentUser(userRepository).orElse(null);
+        if (currentUser == null) {
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(Map.of("message", "Authentication required"));
+        }
+        try {
+            String decoded = java.net.URLDecoder.decode(name, java.nio.charset.StandardCharsets.UTF_8).trim();
+            Map<String, Object> result = jobService.deleteDepartment(decoded, currentUser);
+            return ResponseEntity.ok(result);
+        } catch (IllegalArgumentException ex) {
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", ex.getMessage()));
+        } catch (IllegalStateException ex) {
+            return ResponseEntity.status(HttpStatus.CONFLICT).body(Map.of("success", false, "message", ex.getMessage()));
+        } catch (Exception ex) {
+            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of("success", false, "message", "Failed to delete department: " + ex.getMessage()));
+        }
+    }
+
+    @DeleteMapping("/departments")
+    public ResponseEntity<?> deleteDepartmentParam(@RequestParam("name") String name) {
+        return deleteDepartment(name);
     }
 
     @GetMapping("/{id}")
@@ -129,6 +175,10 @@ public class JobApiController {
         User currentUser = SecurityUtils.getCurrentUser(userRepository).orElse(null);
         if (currentUser != null) {
             job.setRecruiter(currentUser);
+            if ((job.getCompanyName() == null || job.getCompanyName().isBlank() || "SmartHire Technologies".equalsIgnoreCase(job.getCompanyName()))
+                    && currentUser.getCompanyName() != null && !currentUser.getCompanyName().isBlank()) {
+                job.setCompanyName(currentUser.getCompanyName().trim());
+            }
         }
 
         Job saved = jobService.saveJob(job, currentUser);
@@ -138,13 +188,16 @@ public class JobApiController {
             List<User> jobSeekers = userRepository.findAll().stream()
                     .filter(u -> "USER".equalsIgnoreCase(u.getRole()))
                     .toList();
+            String comp = (saved.getCompanyName() != null && !saved.getCompanyName().isBlank())
+                    ? saved.getCompanyName()
+                    : "SmartHire Technologies";
             for (User seeker : jobSeekers) {
                 String seekerName = seeker.getFullName() != null ? seeker.getFullName() : "Candidate";
                 notificationService.sendEnrichedNotification(
                         seeker.getEmail(),
                         seekerName,
                         "New Job Opportunity Available",
-                        "Hello " + seekerName + ", a new job opportunity for " + saved.getTitle() + " is now available. Check the job details and apply if interested.",
+                        "Hello " + seekerName + ", a new job opportunity for " + saved.getTitle() + " at " + comp + " is now available. Check the job details and apply if interested.",
                         "JOB_POSTING",
                         "/dashboard/jobroles",
                         saved.getId(),
@@ -153,7 +206,7 @@ public class JobApiController {
                         "JOB_PUBLISHED",
                         null,
                         saved.getStatus(),
-                        saved.getDepartment() != null ? saved.getDepartment() + " Hiring Team" : "SmartHire Recruitment",
+                        comp,
                         null, null, null, null, null
                 );
             }
@@ -193,6 +246,12 @@ public class JobApiController {
         existing.setSalaryRange(job.getSalaryRange() != null ? job.getSalaryRange() : existing.getSalaryRange());
         existing.setDescription(job.getDescription() != null ? job.getDescription() : existing.getDescription());
         existing.setRequiredSkills(job.getRequiredSkills() != null ? job.getRequiredSkills() : existing.getRequiredSkills());
+        if (job.getScreeningEnabled() != null) {
+            existing.setScreeningEnabled(job.getScreeningEnabled());
+        }
+        if (job.getAtsThreshold() != null && job.getAtsThreshold() > 0) {
+            existing.setAtsThreshold(job.getAtsThreshold());
+        }
         if (job.getStatus() != null && !job.getStatus().isBlank()) {
             existing.setStatus(job.getStatus());
         }
@@ -244,5 +303,64 @@ public class JobApiController {
 
         jobService.deleteJob(id);
         return ResponseEntity.ok(Map.of("success", true, "message", "Job deleted successfully"));
+    }
+
+    /**
+     * GET /api/jobs/questions/templates
+     * Returns the 8 standard default screening questions for HR selection.
+     */
+    @GetMapping("/questions/templates")
+    public ResponseEntity<?> getQuestionTemplates() {
+        return ResponseEntity.ok(Map.of(
+                "templates", jobScreeningService.getDefaultQuestionTemplates(),
+                "total", 8
+        ));
+    }
+
+    /**
+     * GET /api/jobs/{id}/questions
+     * Returns the list of screening questions attached to a specific job.
+     */
+    @GetMapping("/{id}/questions")
+    public ResponseEntity<?> getJobQuestions(@PathVariable("id") Long id) {
+        List<com.smarthire.dto.JobQuestionDTO> questions = jobScreeningService.getQuestionsForJob(id);
+        return ResponseEntity.ok(Map.of(
+                "jobId", id,
+                "questions", questions,
+                "total", questions.size()
+        ));
+    }
+
+    /**
+     * POST /api/jobs/{id}/questions
+     * Saves or updates the list of screening questions for a job.
+     */
+    @PostMapping("/{id}/questions")
+    public ResponseEntity<?> saveJobQuestions(
+            @PathVariable("id") Long id,
+            @RequestBody List<com.smarthire.dto.JobQuestionDTO> questionDTOs
+    ) {
+        User currentUser = SecurityUtils.getCurrentUser(userRepository).orElse(null);
+        boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
+
+        Optional<Job> jobOpt = jobService.getJobById(id);
+        if (jobOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("message", "Job requisition not found"));
+        }
+
+        Job job = jobOpt.get();
+        if (isHr && job.getRecruiter() != null && currentUser != null && !job.getRecruiter().getId().equals(currentUser.getId())) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "message", "Access denied: You cannot edit screening questions for a job created by another recruiter."
+            ));
+        }
+
+        List<com.smarthire.entity.JobQuestion> saved = jobScreeningService.saveQuestionsForJob(id, questionDTOs);
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "jobId", id,
+                "questionsCount", saved.size(),
+                "message", "Screening questions saved successfully for job."
+        ));
     }
 }

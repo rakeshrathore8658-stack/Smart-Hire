@@ -22,6 +22,7 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final ApplicationEventPublisher eventPublisher;
+    private final RealtimeSyncService realtimeSyncService;
 
     @Autowired(required = false)
     private SimpMessagingTemplate messagingTemplate;
@@ -206,23 +207,51 @@ public class NotificationService {
     }
 
     /**
-     * Mark all notifications as read for a user.
+     * Mark all notifications as read for a user and broadcast real-time sync event to HR dashboards.
      */
     @Transactional
     public void markAllRead(String userEmail) {
         if (userEmail != null && !userEmail.isBlank()) {
-            notificationRepository.markAllAsReadForEmail(userEmail.trim().toLowerCase());
-            log.info("Marked all notifications as read for user: {}", userEmail);
+            String cleanEmail = userEmail.trim().toLowerCase();
+            notificationRepository.markAllAsReadForEmail(cleanEmail);
+            try {
+                java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
+                data.put("userEmail", cleanEmail);
+                data.put("isRead", true);
+                data.put("status", "READ");
+                if (realtimeSyncService != null) {
+                    realtimeSyncService.broadcastEvent("NOTIFICATION_READ", "UPDATE_ALL", data);
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to broadcast NOTIFICATION_READ event: {}", ex.getMessage());
+            }
+            log.info("Marked all notifications as read for user: {}", cleanEmail);
         }
     }
 
     /**
-     * Mark a single notification as read by ID.
+     * Mark a single notification as read by ID and broadcast real-time sync event to HR dashboards.
      */
     @Transactional
     public void markAsRead(Long notificationId) {
         if (notificationId != null) {
             notificationRepository.markAsReadById(notificationId);
+            try {
+                notificationRepository.findById(notificationId).ifPresent(notif -> {
+                    java.util.Map<String, Object> data = new java.util.LinkedHashMap<>();
+                    data.put("notificationId", notif.getId());
+                    data.put("hrUserId", notif.getHrUserId());
+                    data.put("userEmail", notif.getUserEmail());
+                    data.put("candidateName", notif.getCandidateName());
+                    data.put("isRead", true);
+                    data.put("status", "READ");
+                    if (realtimeSyncService != null) {
+                        realtimeSyncService.broadcastEvent("NOTIFICATION_READ", "UPDATE", data);
+                    }
+                });
+            } catch (Exception ex) {
+                log.warn("Failed to broadcast NOTIFICATION_READ event: {}", ex.getMessage());
+            }
         }
     }
 

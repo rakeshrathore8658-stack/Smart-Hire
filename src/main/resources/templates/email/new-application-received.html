@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Application Received - SmartHire</title>
+</head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; background-color: #F6F8FB; margin: 0; padding: 36px 16px;">
+  <div style="max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 14px; border: 1px solid #E2E8F0; overflow: hidden; box-shadow: 0 10px 25px -5px rgba(32, 59, 96, 0.08);">
+    
+    <!-- Top SmartHire Brand Accent Bar -->
+    <div style="height: 5px; background: linear-gradient(90deg, #FF7900 0%, #FFA24C 60%, #203B60 100%);"></div>
+
+    <!-- Header with SmartHire App Theme (#FF7900 / #203B60) -->
+    <div style="background: linear-gradient(135deg, #203B60 0%, #142A45 100%); padding: 30px 32px; color: #ffffff;">
+      <div style="display: inline-block; font-size: 11px; font-weight: 800; text-transform: uppercase; letter-spacing: 1.5px; color: #FF7900; background: rgba(255, 121, 0, 0.16); padding: 4px 10px; border-radius: 20px; margin-bottom: 10px; border: 1px solid rgba(255, 121, 0, 0.35);">
+        /// SmartHire ATS &bull; Application Confirmation
+      </div>
+      <h1 style="margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.3px; line-height: 1.3;">
+        Application Received &amp; Registered
+      </h1>
+    </div>
+
+    <!-- Main Content -->
+    <div style="padding: 32px; color: #172B45; line-height: 1.65; font-size: 15px;">
+      <p style="margin-top: 0;">Dear <strong>{{candidateName}}</strong>,</p>
+      
+      <p>Thank you for applying for the <strong>{{jobTitle}}</strong> position at <strong>{{companyName}}</strong>. We have successfully received your application, resume, and pre-screening questionnaire.</p>
+
+      <!-- Status Highlight Box with SmartHire Styling -->
+      <div style="margin: 22px 0; padding: 18px 20px; background: #FFF7ED; border-radius: 8px; border: 1px solid #FED7AA; border-left: 5px solid #FF7900;">
+        <div style="font-size: 12px; font-weight: 800; color: #EA580C; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 6px;">
+          Active Stage: Under Review
+        </div>
+        <div style="font-size: 16px; font-weight: 800; color: #172B45;">{{jobTitle}}</div>
+        <div style="font-size: 14px; color: #475569; margin-top: 4px;">Company: <strong style="color: #172B45;">{{companyName}}</strong></div>
+        <div style="font-size: 13px; color: #EA580C; margin-top: 8px; font-weight: 700;">ATS Profile Match Score: {{atsScore}}%</div>
+      </div>
+
+      <p>Our recruitment team is reviewing your profile and credentials. We will update you on the next steps in our hiring process as soon as our initial screening review is concluded.</p>
+
+      <p>You can track the live status of your application anytime in your SmartHire Candidate Portal.</p>
+
+      <p style="margin-bottom: 0; margin-top: 24px;">
+        Best regards,<br>
+        <strong style="color: #172B45; font-size: 15px;">{{hrName}}</strong><br>
+        <span style="color: #64748B; font-size: 13px;">{{companyName}} Recruiting Team</span>
+      </p>
+    </div>
+
+    <!-- Branded Footer without HR personal email -->
+    <div style="padding: 18px 32px; background-color: #F8FAFC; border-top: 1px solid #E2E8F0; font-size: 12px; color: #64748B; text-align: center;">
+      Notification dispatched via SmartHire ATS Platform.
+    </div>
+  </div>
+</body>
+</html>

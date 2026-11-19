@@ -43,6 +43,14 @@ public class NotificationEventListener {
         String recipientEmail = event.getUserEmail().trim().toLowerCase();
         String type = event.getType() != null ? event.getType().trim().toUpperCase() : "SYSTEM";
 
+        // Defer all candidate recruitment workflow events to the enterprise NotificationQueue
+        // This prevents duplicate and preference-bypassing in-app notifications
+        if (type.contains("SHORTLIST") || type.contains("STAGE") || type.contains("INTERVIEW")
+                || type.contains("FEEDBACK") || type.contains("HIRED") || type.contains("REJECT")) {
+            log.debug("NotificationEventListener deferred [{}] event for [{}] to NotificationQueue", type, recipientEmail);
+            return;
+        }
+
         // Check user preferences before persisting or dispatching
         if (!isNotificationAllowedByPreference(recipientEmail, type)) {
             log.info("Notification of type [{}] suppressed for user [{}] per preference configuration.",

@@ -78,4 +78,35 @@ public class RealtimeSyncService {
         data.put("interviewDate", interviewDate);
         broadcastEvent("INTERVIEW_SCHEDULED", "UPDATE", data);
     }
+
+    public void broadcastNotification(com.smarthire.entity.Notification notification) {
+        if (notification == null || notification.getUserEmail() == null || notification.getUserEmail().isBlank()) return;
+        Map<String, Object> details = new LinkedHashMap<>();
+        details.put("id", notification.getId());
+        details.put("userEmail", notification.getUserEmail());
+        details.put("title", notification.getTitle());
+        details.put("message", notification.getMessage());
+        details.put("type", notification.getType());
+        details.put("actionUrl", notification.getActionUrl());
+        details.put("createdAt", notification.getCreatedAt() != null ? notification.getCreatedAt().toString() : "");
+
+        // Individual user notifications must strictly go to the recipient's private stream only.
+        // Never broadcast candidate-specific notifications to /topic/recruitment (HR shared topic).
+        if (messagingTemplate != null) {
+            String normEmail = notification.getUserEmail().trim().toLowerCase();
+            try {
+                // Push directly to topic subscribed by NotificationSocket.js: /topic/notifications/{email}
+                messagingTemplate.convertAndSend("/topic/notifications/" + normEmail, (Object) details);
+                // Also push to Spring STOMP user destination: /user/{email}/queue/notifications
+                messagingTemplate.convertAndSendToUser(
+                        normEmail,
+                        "/queue/notifications",
+                        (Object) details
+                );
+                log.info("WebSocket notification pushed strictly to private user topic [/topic/notifications/{}]", normEmail);
+            } catch (Exception ex) {
+                log.warn("Failed to push user notification websocket: {}", ex.getMessage());
+            }
+        }
+    }
 }

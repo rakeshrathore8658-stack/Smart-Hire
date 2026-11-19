@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import AnalysisResult from '../../components/common/AnalysisResult';
+import ResumePreviewModal from '../../components/common/ResumePreviewModal';
 import api from '../../api/client';
 
 const CandidateDetails = () => {
@@ -11,6 +12,7 @@ const CandidateDetails = () => {
   const [actionAlert, setActionAlert] = useState('');
   const [notes, setNotes] = useState('');
   const [noteSaved, setNoteSaved] = useState(false);
+  const [previewModal, setPreviewModal] = useState({ open: false, type: 'pdf' });
 
   const fallbackCandidate = {
     id: Number(id) || 1,
@@ -59,9 +61,23 @@ const CandidateDetails = () => {
     const fetchCandidate = async () => {
       try {
         const res = await api.get(`/dashboard/candidates/${id}`);
-        if (isMounted && res.data) {
-          setCandidate(res.data);
-          setShortlisted(!!res.data.shortlisted);
+        let candData = res.data;
+        if (candData && !candData.resumeUrl) {
+          try {
+            const hrRes = await api.get(`/hr/applications/${id}`);
+            if (hrRes.data?.resume?.resumeUrl) {
+              candData = {
+                ...candData,
+                resumeUrl: hrRes.data.resume.resumeUrl,
+                resumePublicId: hrRes.data.resume.resumePublicId,
+                resumeFileName: hrRes.data.resume.fileName
+              };
+            }
+          } catch (_) {}
+        }
+        if (isMounted && candData) {
+          setCandidate(candData);
+          setShortlisted(!!candData.shortlisted);
         } else {
           setCandidate(fallbackCandidate);
           setShortlisted(fallbackCandidate.shortlisted);
@@ -178,6 +194,45 @@ const CandidateDetails = () => {
                 >
                   {candidate.overallScore}% Match
                 </span>
+                {(candidate.applicationSource || '').toUpperCase() === 'JOB_SEEKER' ? (
+                  <span
+                    className="badge"
+                    title="Candidate applied directly via Job Seeker Portal"
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.12)',
+                      color: '#2563eb',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      padding: '4px 10px',
+                      borderRadius: '12px',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <i className="bi bi-globe2"></i> Job Seeker Portal
+                  </span>
+                ) : (
+                  <span
+                    className="badge"
+                    title="Resume scanned or uploaded by HR Recruiter"
+                    style={{
+                      background: 'rgba(245, 158, 11, 0.12)',
+                      color: '#d97706',
+                      border: '1px solid rgba(245, 158, 11, 0.3)',
+                      padding: '4px 10px',
+                      borderRadius: '12px',
+                      fontSize: '0.75rem',
+                      fontWeight: 700,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                    }}
+                  >
+                    <i className="bi bi-person-workspace"></i> HR Scan
+                  </span>
+                )}
               </div>
               <p style={{ margin: '0 0 6px', fontSize: '0.88rem', color: 'var(--text-secondary)' }}>
                 Applied for:{' '}
@@ -200,6 +255,28 @@ const CandidateDetails = () => {
 
           {/* Quick Action Buttons */}
           <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+            {candidate.resumeUrl ? (
+              <button
+                type="button"
+                onClick={() => setPreviewModal({ open: true, type: 'pdf' })}
+                className="btn btn-outline-primary btn-sm"
+                title="View Cloud Resume in Current Tab"
+              >
+                <i className="bi bi-cloud-arrow-down"></i> View Cloud Resume
+              </button>
+            ) : candidate.resumeId ? (
+              <button
+                type="button"
+                onClick={() => setPreviewModal({ open: true, type: 'pdf' })}
+                className="btn btn-outline-primary btn-sm"
+                title="View Stored Resume Document in Current Tab"
+              >
+                <i className="bi bi-file-earmark-pdf"></i> View Resume
+              </button>
+            ) : null}
+            <Link to={`/dashboard/applications/${candidate.id}`} className="btn btn-outline-primary btn-sm">
+              <i className="bi bi-file-earmark-text"></i> Application Details
+            </Link>
             <Link to={`/dashboard/feedback?candId=${candidate.id}`} className="btn btn-secondary btn-sm">
               <i className="bi bi-card-checklist"></i> Interview Feedback
             </Link>
@@ -304,6 +381,16 @@ const CandidateDetails = () => {
           </article>
         </aside>
       </div>
+
+      {/* In-App Resume Preview Modal (Current Tab) */}
+      <ResumePreviewModal
+        isOpen={previewModal.open}
+        onClose={() => setPreviewModal({ open: false, type: 'pdf' })}
+        candidateName={candidate?.candidateName || 'Candidate'}
+        resumeUrl={candidate?.resumeUrl || (candidate?.resumeId ? `/api/resumes/${candidate.resumeId}/view` : '')}
+        resumeFileName={candidate?.resumeFileName || `${candidate?.candidateName || 'Candidate'}_Resume`}
+        initialType={previewModal.type}
+      />
     </div>
   );
 };

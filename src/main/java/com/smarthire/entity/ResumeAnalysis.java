@@ -45,17 +45,54 @@ public class ResumeAnalysis {
     @com.fasterxml.jackson.annotation.JsonIgnore
     private User user;
 
+    @Column(name = "user_id", insertable = false, updatable = false)
+    private Long userId;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "recruiter_id")
     @com.fasterxml.jackson.annotation.JsonIgnore
     private User recruiter;
 
+    @Column(name = "recruiter_id", insertable = false, updatable = false)
+    private Long recruiterId;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "job_id")
+    @com.fasterxml.jackson.annotation.JsonIgnore
+    private Job job;
+
+    @Column(name = "resume_url", length = 500)
+    private String resumeUrl;
+
+    @Column(name = "resume_public_id", length = 250)
+    private String resumePublicId;
+
+    public Long getJobId() {
+        return job != null ? job.getId() : null;
+    }
+
+    public String getResumeUrl() {
+        if (resumeUrl != null && !resumeUrl.isBlank()) {
+            return resumeUrl;
+        }
+        return resume != null ? resume.getResumeUrl() : null;
+    }
+
+    public String getResumePublicId() {
+        if (resumePublicId != null && !resumePublicId.isBlank()) {
+            return resumePublicId;
+        }
+        return resume != null ? resume.getResumePublicId() : null;
+    }
+
     public Long getRecruiterId() {
-        return recruiter != null ? recruiter.getId() : null;
+        if (recruiter != null) return recruiter.getId();
+        return recruiterId;
     }
 
     public Long getUserId() {
-        return user != null ? user.getId() : null;
+        if (user != null) return user.getId();
+        return userId;
     }
 
     public String getResumeFileName() {
@@ -143,6 +180,10 @@ public class ResumeAnalysis {
     @Column(name = "deleted_by_jobseeker")
     @Builder.Default
     private Boolean deletedByJobseeker = false;
+
+    @Column(name = "application_source", length = 50)
+    @Builder.Default
+    private String applicationSource = "HR_SCAN";
 
     @Column(name = "interview_date")
     private LocalDateTime interviewDate;
@@ -269,6 +310,13 @@ public class ResumeAnalysis {
             return dto.getSkillsAnalysis().getMissingSkills();
         }
         return Collections.emptyList();
+    }
+
+    public List<String> getMissingSkillsStringList() {
+        return getMissingSkillsList().stream()
+                .map(m -> m.getSkill() != null ? m.getSkill() : "")
+                .filter(s -> !s.isBlank())
+                .toList();
     }
 
     public List<String> getStrengthsList() {
@@ -533,10 +581,37 @@ public class ResumeAnalysis {
         return (status != null && !status.isBlank()) ? status : "Completed";
     }
 
+    public String getEffectiveApplicationSource() {
+        if (applicationSource != null && !applicationSource.isBlank()) {
+            return applicationSource.trim().toUpperCase();
+        }
+        if (stage != null && stage.toLowerCase().contains("screening")) {
+            return "JOB_SEEKER";
+        }
+        if (resume != null) {
+            if (resume.getRecruiter() != null) {
+                return "HR_SCAN";
+            }
+            if (resume.getUser() != null) {
+                return "JOB_SEEKER";
+            }
+        }
+        if (user != null && recruiter == null) {
+            return "JOB_SEEKER";
+        }
+        if (recruiter != null) {
+            return "HR_SCAN";
+        }
+        return "JOB_SEEKER";
+    }
+
     @PrePersist
     protected void onCreate() {
         if (createdAt == null) {
             createdAt = LocalDateTime.now();
+        }
+        if (applicationSource == null || applicationSource.isBlank()) {
+            applicationSource = getEffectiveApplicationSource();
         }
         if (user == null && resume != null && resume.getUser() != null) {
             user = resume.getUser();

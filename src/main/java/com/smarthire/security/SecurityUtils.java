@@ -32,19 +32,49 @@ public final class SecurityUtils {
     public static String getCurrentUserEmail() {
         return getCurrentPrincipal().map(UserPrincipal::getEmail).orElseGet(() -> {
             Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-            if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken)) {
+            if (auth != null && auth.isAuthenticated() && !(auth instanceof AnonymousAuthenticationToken) && !"anonymousUser".equalsIgnoreCase(auth.getName())) {
                 return auth.getName();
             }
+            try {
+                org.springframework.web.context.request.ServletRequestAttributes attrs =
+                        (org.springframework.web.context.request.ServletRequestAttributes)
+                                org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+                if (attrs != null && attrs.getRequest() != null) {
+                    String headerEmail = attrs.getRequest().getHeader("X-User-Email");
+                    if (headerEmail != null && !headerEmail.isBlank()) {
+                        return headerEmail.trim().toLowerCase();
+                    }
+                    if (attrs.getRequest().getSession(false) != null) {
+                        String sessionEmail = (String) attrs.getRequest().getSession(false).getAttribute("userEmail");
+                        if (sessionEmail != null && !sessionEmail.isBlank()) {
+                            return sessionEmail.trim().toLowerCase();
+                        }
+                    }
+                }
+            } catch (Exception ignored) {}
             return null;
         });
     }
 
     public static String getCurrentUserRole() {
-        return getCurrentPrincipal().map(UserPrincipal::getRole).orElse("USER");
+        return getCurrentPrincipal().map(UserPrincipal::getRole).orElseGet(() -> {
+            try {
+                org.springframework.web.context.request.ServletRequestAttributes attrs =
+                        (org.springframework.web.context.request.ServletRequestAttributes)
+                                org.springframework.web.context.request.RequestContextHolder.getRequestAttributes();
+                if (attrs != null && attrs.getRequest() != null && attrs.getRequest().getSession(false) != null) {
+                    String role = (String) attrs.getRequest().getSession(false).getAttribute("userRole");
+                    if (role != null && !role.isBlank()) {
+                        return role.trim().toUpperCase();
+                    }
+                }
+            } catch (Exception ignored) {}
+            return "USER";
+        });
     }
 
     public static boolean isHr() {
-        return getCurrentPrincipal().map(UserPrincipal::isHr).orElse(false);
+        return "HR".equalsIgnoreCase(getCurrentUserRole()) || "RECRUITER".equalsIgnoreCase(getCurrentUserRole());
     }
 
     public static boolean isJobSeeker() {

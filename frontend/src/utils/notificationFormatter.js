@@ -11,7 +11,7 @@ export const formatNotificationDisplay = (notif = {}) => {
   let rawMessage = notif.message || '';
   const currentStatus = notif.currentStatus || '';
   const candName = notif.candidateName || 'Candidate';
-  const role = notif.jobTitle || 'Applied Position';
+  const role = notif.jobTitle || notif.targetJobRole || 'Software Engineer';
 
   let title = rawTitle;
   let message = rawMessage;
@@ -295,6 +295,35 @@ export const formatNotificationDisplay = (notif = {}) => {
   // Fallback cleanup if title was generic "Application Status Updated"
   if (title === 'Application Status Updated') {
     title = `Application Status Update: ${role}`;
+  }
+
+  // Safety fallbacks: title and message must never be completely empty or whitespace
+  if (!title || !title.trim()) {
+    if (
+      actionType === 'APPLICATION_REMOVED' ||
+      actionType === 'APPLICATION_DELETED' ||
+      actionType === 'CANDIDATE_ARCHIVED' ||
+      notif.stage === 'Archived' ||
+      currentStatus === 'RECENTLY_DELETED'
+    ) {
+      title = `Application Removed from Active Review: ${role}`;
+    } else {
+      title = `Application Status Update: ${role}`;
+    }
+  }
+
+  if (!message || !message.trim()) {
+    if (
+      actionType === 'APPLICATION_REMOVED' ||
+      actionType === 'APPLICATION_DELETED' ||
+      actionType === 'CANDIDATE_ARCHIVED' ||
+      notif.stage === 'Archived' ||
+      currentStatus === 'RECENTLY_DELETED'
+    ) {
+      message = `Hello ${candName}, your application for '${role}' has been removed from active recruitment review and placed in recently deleted.`;
+    } else {
+      message = `Hello ${candName}, your application status for '${role}' has been updated in the recruitment workflow.`;
+    }
   }
 
   return {

@@ -43,6 +43,12 @@ public class DashboardApiController {
     private final BulkResumeUploadService bulkResumeUploadService;
     private final com.smarthire.service.RealtimeSyncService realtimeSyncService;
     private final com.smarthire.service.CandidateComparisonService candidateComparisonService;
+    private final com.smarthire.service.DynamicEmailService dynamicEmailService;
+    private final com.smarthire.service.NotificationOutboxService notificationOutboxService;
+    private final com.smarthire.service.NotificationQueueService notificationQueueService;
+    private final com.smarthire.repository.NotificationQueueRepository queueRepository;
+    private final com.smarthire.repository.NotificationDeliveryLogRepository deliveryLogRepository;
+    private final com.smarthire.repository.NotificationRepository notificationRepository;
 
     private User getAuthenticatedUser() {
         return resolveUser(null, null);
@@ -149,9 +155,18 @@ public class DashboardApiController {
         }
         map.put("createdAt", ra.getCreatedAt());
         map.put("formattedDate", ra.getFormattedDate() != null ? ra.getFormattedDate() : (ra.getCreatedAt() != null ? ra.getCreatedAt().format(DateTimeFormatter.ofPattern("dd MMM yyyy")) : "Recent"));
+        String resUrl = ra.getResumeUrl();
+        map.put("resumeUrl", resUrl);
+        map.put("resumePublicId", ra.getResumePublicId());
+        String appSource = ra.getEffectiveApplicationSource();
+        map.put("applicationSource", appSource);
+        map.put("sourceLabel", "JOB_SEEKER".equalsIgnoreCase(appSource) ? "Job Seeker Portal" : "HR Recruiter Scan");
         if (ra.getResume() != null) {
             map.put("resumeId", ra.getResume().getId());
             map.put("fileName", ra.getResume().getFileName());
+            if (resUrl == null || resUrl.isBlank()) {
+                map.put("resumeUrl", ra.getResume().getResumeUrl());
+            }
         }
         return map;
     }
@@ -348,17 +363,26 @@ public class DashboardApiController {
                         : "SmartHire Recruitment Team";
 
                 String candidateTargetEmail = null;
-                if (analysis.getUser() != null && analysis.getUser().getEmail() != null) {
-                    candidateTargetEmail = analysis.getUser().getEmail();
-                } else if (resume != null && resume.getUser() != null && resume.getUser().getEmail() != null) {
-                    candidateTargetEmail = resume.getUser().getEmail();
-                } else if (analysis.getCandidateEmailNormalized() != null && !analysis.getCandidateEmailNormalized().isBlank()) {
-                    candidateTargetEmail = analysis.getCandidateEmailNormalized();
-                } else if (analysis.getCandidateEmail() != null && !analysis.getCandidateEmail().isBlank()) {
-                    candidateTargetEmail = analysis.getCandidateEmail();
+                boolean isHrScanResume = "HR_SCAN".equalsIgnoreCase(analysis.getEffectiveApplicationSource());
+
+                // Never send candidate notification for HR test scans / internal HR uploads
+                if (!isHrScanResume) {
+                    if (analysis.getUser() != null && analysis.getUser().getEmail() != null) {
+                        candidateTargetEmail = analysis.getUser().getEmail();
+                    } else if (resume != null && resume.getUser() != null && resume.getUser().getEmail() != null) {
+                        candidateTargetEmail = resume.getUser().getEmail();
+                    } else if (analysis.getCandidateEmailNormalized() != null && !analysis.getCandidateEmailNormalized().isBlank()) {
+                        candidateTargetEmail = analysis.getCandidateEmailNormalized();
+                    } else if (analysis.getCandidateEmail() != null && !analysis.getCandidateEmail().isBlank()) {
+                        candidateTargetEmail = analysis.getCandidateEmail();
+                    }
                 }
 
-                if (candidateTargetEmail != null && !candidateTargetEmail.isBlank()) {
+                // HR must never receive a candidate notification for actions they performed themselves
+                boolean isHrSelfAction = currentUser != null && currentUser.getEmail() != null
+                        && candidateTargetEmail != null && candidateTargetEmail.equalsIgnoreCase(currentUser.getEmail());
+
+                if (!isHrScanResume && !isHrSelfAction && candidateTargetEmail != null && !candidateTargetEmail.isBlank()) {
                     String dynamicMsg = "Hello " + candName + ", your application for '" + role + "' has been removed from active recruitment review by HR Recruiter " + hrName + " (" + companyName + ") and placed in recently deleted. If you have questions regarding your application, please reach out to our recruitment team.";
                     try {
                         notificationService.sendEnrichedNotification(
@@ -382,6 +406,9 @@ public class DashboardApiController {
                     } catch (Exception notifEx) {
                         log.warn("Failed to dispatch deletion notification to candidate: {}", notifEx.getMessage());
                     }
+                } else {
+                    log.info("Suppressed candidate notification for deletion: isHrScan={}, isHrSelfAction={}, candidateEmail={}",
+                            isHrScanResume, isHrSelfAction, candidateTargetEmail);
                 }
 
                 log.info("Moving ResumeAnalysis record [id={}] for candidate [{}] and role [{}] to Recently Deleted by HR [{}]", id, candName, role, hrName);
@@ -459,7 +486,10 @@ public class DashboardApiController {
     }
 
     @GetMapping("/applications")
-    public ResponseEntity<?> getApplications(@RequestParam(value = "stage", required = false) String stage) {
+    public ResponseEntity<?> getApplications(
+            @RequestParam(value = "stage", required = false) String stage,
+            @RequestParam(value = "source", required = false) String source
+    ) {
         User currentUser = getAuthenticatedUser();
         boolean isHr = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
         if (!isHr) {
@@ -483,6 +513,10 @@ public class DashboardApiController {
                     if ("hired".equals(target)) return s.contains("hire");
                     return s.equalsIgnoreCase(target);
                 }).toList();
+            }
+            if (source != null && !source.isBlank() && !"all".equalsIgnoreCase(source)) {
+                String targetSource = source.trim().toUpperCase();
+                list = list.stream().filter(ra -> targetSource.equalsIgnoreCase(ra.getEffectiveApplicationSource())).toList();
             }
         }
 
@@ -631,22 +665,44 @@ public class DashboardApiController {
                     actionType = "STAGE_UPDATED";
                 }
 
-                notificationService.sendEnrichedNotification(
-                        analysis.getCandidateEmail(),
-                        candName,
-                        title,
-                        dynamicMsg,
-                        notifType,
-                        "/dashboard/notifications",
-                        analysis.getId(),
-                        "APPLICATION",
-                        role,
-                        actionType,
-                        oldStage,
-                        cleanStage,
-                        hrName,
-                        null, null, null, null, null
-                );
+                // Dispatch candidate notification strictly through Centralized Notification Queue
+                try {
+                    Long effectiveHrId = (currentUser != null) ? currentUser.getId() : (analysis.getRecruiterId() != null ? analysis.getRecruiterId() : (analysis.getJob() != null && analysis.getJob().getRecruiter() != null ? analysis.getJob().getRecruiter().getId() : 1L));
+                    if (effectiveHrId != null && analysis.getCandidateEmail() != null && !analysis.getCandidateEmail().isBlank()) {
+                        Map<String, Object> queueData = new HashMap<>();
+                        queueData.put("candidateName", candName);
+                        queueData.put("candidateEmail", analysis.getCandidateEmail());
+                        queueData.put("jobTitle", role);
+                        queueData.put("companyName", companyName);
+                        queueData.put("atsScore", String.valueOf(analysis.getOverallScore()));
+                        queueData.put("hrName", hrName);
+                        queueData.put("hrEmail", currentUser != null ? currentUser.getEmail() : "");
+
+                        com.smarthire.entity.NotificationEventType queueEvent = null;
+                        if ("Shortlisted".equalsIgnoreCase(cleanStage)) {
+                            queueEvent = com.smarthire.entity.NotificationEventType.CANDIDATE_SHORTLISTED;
+                        } else if ("Rejected".equalsIgnoreCase(cleanStage)) {
+                            queueEvent = com.smarthire.entity.NotificationEventType.CANDIDATE_REJECTED;
+                        } else if ("Hired".equalsIgnoreCase(cleanStage)) {
+                            queueEvent = com.smarthire.entity.NotificationEventType.CANDIDATE_HIRED;
+                        }
+
+                        if (queueEvent != null) {
+                            notificationQueueService.enqueueCandidateEvent(
+                                    queueEvent,
+                                    effectiveHrId,
+                                    (analysis.getUser() != null) ? analysis.getUser().getId() : null,
+                                    analysis.getCandidateEmail(),
+                                    candName,
+                                    analysis.getId(),
+                                    analysis.getJobId(),
+                                    queueData
+                            );
+                        }
+                    }
+                } catch (Exception qEx) {
+                    log.warn("Stage update notification queue error: {}", qEx.getMessage());
+                }
             }
 
             try {
@@ -740,40 +796,36 @@ public class DashboardApiController {
                         ? authUser.getCompanyName()
                         : "SmartHire Recruitment Team";
 
-                if (!current) {
-                    notificationService.sendEnrichedNotification(
-                            analysis.getCandidateEmail(),
-                            candName,
-                            "Congratulations! Your Application Has Been Shortlisted ⭐",
-                            "Hello " + candName + ", your application for '" + role + "' has been shortlisted by " + hrName + " at " + companyName + ". You have been selected for the next stage of the recruitment process.",
-                            "SHORTLIST",
-                            "/dashboard/notifications",
-                            analysis.getId(),
-                            "APPLICATION",
-                            role,
-                            "SHORTLIST_ADDED",
-                            "Under Review",
-                            "SHORTLISTED",
-                            hrName,
-                            null, null, null, null, null
-                    );
-                } else {
-                    notificationService.sendEnrichedNotification(
-                            analysis.getCandidateEmail(),
-                            candName,
-                            "Application Status: Removed from Shortlist",
-                            "Hello " + candName + ", your application for '" + role + "' has been moved from the Shortlist back to 'Under Review' by HR Recruiter " + hrName + ". Our hiring team is reviewing candidate requisitions and will notify you if your profile is selected for interview rounds.",
-                            "SHORTLIST",
-                            "/dashboard/notifications",
-                            analysis.getId(),
-                            "APPLICATION",
-                            role,
-                            "SHORTLIST_REMOVED",
-                            "SHORTLISTED",
-                            saved.getStage() != null ? saved.getStage() : "Under Review",
-                            hrName,
-                            null, null, null, null, null
-                    );
+                // Dispatch notification strictly through Centralized Notification Queue
+                try {
+                    Long effectiveHrId = (currentUser != null) ? currentUser.getId() : (analysis.getRecruiterId() != null ? analysis.getRecruiterId() : (analysis.getJob() != null && analysis.getJob().getRecruiter() != null ? analysis.getJob().getRecruiter().getId() : 1L));
+                    if (effectiveHrId != null && analysis.getCandidateEmail() != null && !analysis.getCandidateEmail().isBlank()) {
+                        Map<String, Object> queueData = new HashMap<>();
+                        queueData.put("candidateName", candName);
+                        queueData.put("candidateEmail", analysis.getCandidateEmail());
+                        queueData.put("jobTitle", role);
+                        queueData.put("companyName", companyName);
+                        queueData.put("atsScore", String.valueOf(analysis.getOverallScore()));
+                        queueData.put("hrName", hrName);
+                        queueData.put("hrEmail", currentUser != null ? currentUser.getEmail() : "");
+
+                        com.smarthire.entity.NotificationEventType event = (!current)
+                                ? com.smarthire.entity.NotificationEventType.CANDIDATE_SHORTLISTED
+                                : com.smarthire.entity.NotificationEventType.REMOVED_FROM_SHORTLIST;
+
+                        notificationQueueService.enqueueCandidateEvent(
+                                event,
+                                effectiveHrId,
+                                (analysis.getUser() != null) ? analysis.getUser().getId() : null,
+                                analysis.getCandidateEmail(),
+                                candName,
+                                analysis.getId(),
+                                analysis.getJobId(),
+                                queueData
+                        );
+                    }
+                } catch (Exception qEx) {
+                    log.warn("Shortlist toggle notification queue error: {}", qEx.getMessage());
                 }
             }
 
@@ -938,64 +990,41 @@ public class DashboardApiController {
                         : "TBD";
                 String newScheduleStr = dateStr + " at " + timeStr;
 
-                if (isRescheduled) {
-                    String msg = "Hello " + candName + ", your " + round + " interview for '" + role +
-                            "' has been rescheduled by " + interviewer + " from " + oldScheduleStr + " to " + newScheduleStr +
-                            " (" + ivType + ")." +
-                            (reason != null && !reason.isBlank() ? " Reason: " + reason + "." : "") +
-                            (meetingLink != null && !meetingLink.isBlank() ? " Meeting Link: " + meetingLink + "." : "") +
-                            (analysis.getInterviewLocation() != null && !analysis.getInterviewLocation().isBlank() ? " Location: " + analysis.getInterviewLocation() + "." : "") +
-                            " Please check your calendar and be available on time.";
+                // Dispatch interview notification strictly through Centralized Notification Queue
+                try {
+                    Long effectiveHrId = (currentUser != null) ? currentUser.getId() : (analysis.getRecruiterId() != null ? analysis.getRecruiterId() : (analysis.getJob() != null && analysis.getJob().getRecruiter() != null ? analysis.getJob().getRecruiter().getId() : 1L));
+                    String comp = (analysis.getJob() != null && analysis.getJob().getCompanyName() != null)
+                            ? analysis.getJob().getCompanyName()
+                            : "SmartHire Technologies";
+                    if (effectiveHrId != null && analysis.getCandidateEmail() != null && !analysis.getCandidateEmail().isBlank()) {
+                        Map<String, Object> queueData = new HashMap<>();
+                        queueData.put("candidateName", candName);
+                        queueData.put("candidateEmail", analysis.getCandidateEmail());
+                        queueData.put("jobTitle", role);
+                        queueData.put("companyName", comp);
+                        queueData.put("atsScore", String.valueOf(analysis.getOverallScore()));
+                        queueData.put("hrName", interviewer);
+                        queueData.put("hrEmail", currentUser != null ? currentUser.getEmail() : "");
+                        queueData.put("interviewDate", dateStr);
+                        queueData.put("interviewTime", timeStr);
+                        queueData.put("interviewMode", ivType);
+                        queueData.put("interviewRound", round);
+                        queueData.put("meetingLink", meetingLink != null ? meetingLink : "https://meet.google.com/smarthire-interview");
+                        queueData.put("instructions", hrMessage != null ? hrMessage : "");
 
-                    notificationService.sendEnrichedNotification(
-                            analysis.getCandidateEmail(),
-                            candName,
-                            "Interview Rescheduled: " + role + " (" + round + ")",
-                            msg,
-                            "INTERVIEW",
-                            "/dashboard/notifications",
-                            analysis.getId(),
-                            "INTERVIEW",
-                            role,
-                            "INTERVIEW_RESCHEDULED",
-                            prevStatus,
-                            "Interviewing",
-                            interviewer,
-                            dateStr,
-                            timeStr,
-                            ivType,
-                            meetingLink,
-                            hrMessage
-                    );
-                } else {
-                    String msg = "Hello " + candName + ", great news! Your " + round + " interview for '" + role +
-                            "' has been confirmed on " + newScheduleStr + " (" + ivType + ")." +
-                            " Interviewer: " + interviewer + "." +
-                            (meetingLink != null && !meetingLink.isBlank() ? " Meeting Link: " + meetingLink + "." : "") +
-                            (analysis.getInterviewLocation() != null && !analysis.getInterviewLocation().isBlank() ? " Location: " + analysis.getInterviewLocation() + "." : "") +
-                            (hrMessage != null && !hrMessage.isBlank() ? " Instructions from HR: " + hrMessage + "." : "") +
-                            " Please be ready and join 5 minutes early.";
-
-                    notificationService.sendEnrichedNotification(
-                            analysis.getCandidateEmail(),
-                            candName,
-                            "Interview Scheduled: " + role + " (" + round + ")",
-                            msg,
-                            "INTERVIEW",
-                            "/dashboard/notifications",
-                            analysis.getId(),
-                            "INTERVIEW",
-                            role,
-                            "INTERVIEW_SCHEDULED",
-                            prevStatus,
-                            "Interviewing",
-                            interviewer,
-                            dateStr,
-                            timeStr,
-                            ivType,
-                            meetingLink,
-                            hrMessage
-                    );
+                        notificationQueueService.enqueueCandidateEvent(
+                                com.smarthire.entity.NotificationEventType.INTERVIEW_SCHEDULED,
+                                effectiveHrId,
+                                (analysis.getUser() != null) ? analysis.getUser().getId() : null,
+                                analysis.getCandidateEmail(),
+                                candName,
+                                analysis.getId(),
+                                analysis.getJobId(),
+                                queueData
+                        );
+                    }
+                } catch (Exception qEx) {
+                    log.warn("Interview scheduling notification queue error: {}", qEx.getMessage());
                 }
             }
 
@@ -1046,30 +1075,37 @@ public class DashboardApiController {
                 User authUser = getAuthenticatedUser();
                 String hrName = authUser != null && authUser.getFullName() != null ? authUser.getFullName() : "SmartHire Recruitment Team";
 
-                String msg = "Hello " + candName + ", your scheduled " + (analysis.getInterviewRound() != null ? analysis.getInterviewRound() + " " : "") +
-                        "interview for '" + role + "'" +
-                        (prevDateStr != null ? " on " + prevDateStr : "") +
-                        " has been cancelled by HR Recruiter " + hrName + "." +
-                        (reason != null && !reason.isBlank() ? " Reason: " + reason + "." : " Reason: Unforeseen schedule conflict.") +
-                        " Your application remains active under candidate review, and our recruitment team will reach out regarding next steps.";
+                // Dispatch cancellation notification strictly through Centralized Notification Queue
+                try {
+                    Long effectiveHrId = (currentUser != null) ? currentUser.getId() : (analysis.getRecruiterId() != null ? analysis.getRecruiterId() : (analysis.getJob() != null && analysis.getJob().getRecruiter() != null ? analysis.getJob().getRecruiter().getId() : 1L));
+                    String comp = (analysis.getJob() != null && analysis.getJob().getCompanyName() != null)
+                            ? analysis.getJob().getCompanyName()
+                            : "SmartHire Technologies";
+                    if (effectiveHrId != null && analysis.getCandidateEmail() != null && !analysis.getCandidateEmail().isBlank()) {
+                        Map<String, Object> queueData = new HashMap<>();
+                        queueData.put("candidateName", candName);
+                        queueData.put("candidateEmail", analysis.getCandidateEmail());
+                        queueData.put("jobTitle", role);
+                        queueData.put("companyName", comp);
+                        queueData.put("hrName", hrName);
+                        queueData.put("hrEmail", currentUser != null ? currentUser.getEmail() : "");
+                        queueData.put("interviewDate", prevDateStr != null ? prevDateStr : "Scheduled session");
+                        queueData.put("cancellationReason", reason != null && !reason.isBlank() ? reason : "Unforeseen schedule conflict");
 
-                notificationService.sendEnrichedNotification(
-                        analysis.getCandidateEmail(),
-                        candName,
-                        "Interview Cancelled: " + role,
-                        msg,
-                        "INTERVIEW",
-                        "/dashboard/notifications",
-                        analysis.getId(),
-                        "INTERVIEW",
-                        role,
-                        "INTERVIEW_CANCELLED",
-                        "Interviewing",
-                        "Shortlisted",
-                        hrName,
-                        null, null, null, null,
-                        reason
-                );
+                        notificationQueueService.enqueueCandidateEvent(
+                                com.smarthire.entity.NotificationEventType.INTERVIEW_CANCELLED,
+                                effectiveHrId,
+                                (analysis.getUser() != null) ? analysis.getUser().getId() : null,
+                                analysis.getCandidateEmail(),
+                                candName,
+                                analysis.getId(),
+                                analysis.getJobId(),
+                                queueData
+                        );
+                    }
+                } catch (Exception qEx) {
+                    log.warn("Interview cancellation notification queue error: {}", qEx.getMessage());
+                }
             }
             return ResponseEntity.ok(mapAnalysis(saved));
         }).orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).build());
@@ -1197,22 +1233,36 @@ public class DashboardApiController {
                     message = "Hello " + candName + ", the hiring panel at " + companyName + " has submitted feedback and evaluation for your '" + role + "' interview. Recommendation: " + rec + (score > 0 ? " (Score: " + score + "%)" : "") + ". Your current application status is: " + saved.getStage() + ".";
                 }
 
-                notificationService.sendEnrichedNotification(
-                        analysis.getCandidateEmail(),
-                        candName,
-                        heading,
-                        message,
-                        "FEEDBACK",
-                        "/dashboard/notifications",
-                        analysis.getId(),
-                        "APPLICATION",
-                        role,
-                        "INTERVIEW_FEEDBACK",
-                        prevStage,
-                        saved.getStage(),
-                        hrName,
-                        null, null, null, null, null
-                );
+                // Dispatch feedback notification strictly through Centralized Notification Queue
+                try {
+                    Long effectiveHrId = (currentUser != null) ? currentUser.getId() : (analysis.getRecruiterId() != null ? analysis.getRecruiterId() : (analysis.getJob() != null && analysis.getJob().getRecruiter() != null ? analysis.getJob().getRecruiter().getId() : 1L));
+                    if (effectiveHrId != null && analysis.getCandidateEmail() != null && !analysis.getCandidateEmail().isBlank()) {
+                        Map<String, Object> queueData = new HashMap<>();
+                        queueData.put("candidateName", candName);
+                        queueData.put("candidateEmail", analysis.getCandidateEmail());
+                        queueData.put("jobTitle", role);
+                        queueData.put("companyName", companyName);
+                        queueData.put("atsScore", String.valueOf(analysis.getOverallScore()));
+                        queueData.put("hrName", hrName);
+                        queueData.put("hrEmail", currentUser != null ? currentUser.getEmail() : "");
+                        queueData.put("feedback", "Recommendation: " + rec + (score > 0 ? " (" + score + "% Score)" : "") + (!notes.isBlank() ? " | " + notes : ""));
+                        queueData.put("recommendation", rec);
+                        queueData.put("evaluationScore", score);
+
+                        notificationQueueService.enqueueCandidateEvent(
+                                com.smarthire.entity.NotificationEventType.INTERVIEW_FEEDBACK,
+                                effectiveHrId,
+                                (analysis.getUser() != null) ? analysis.getUser().getId() : null,
+                                analysis.getCandidateEmail(),
+                                candName,
+                                analysis.getId(),
+                                analysis.getJobId(),
+                                queueData
+                        );
+                    }
+                } catch (Exception qEx) {
+                    log.warn("Feedback notification queue error: {}", qEx.getMessage());
+                }
             }
 
             return ResponseEntity.ok(mapAnalysis(saved));
@@ -1288,5 +1338,184 @@ public class DashboardApiController {
             log.warn("Failed to notify HR of bulk upload: {}", e.getMessage());
             return ResponseEntity.ok(Map.of("success", false, "message", e.getMessage()));
         }
+    }
+
+    /**
+     * GET /api/dashboard/notification-history/email
+     * Resilient fallback endpoint for retrieving sent email notifications for this HR recruiter.
+     */
+    @GetMapping({"/notification-history/email", "/history/email"})
+    public ResponseEntity<?> getEmailNotificationHistory() {
+        User hr = getAuthenticatedUser();
+        Long hrId = (hr != null) ? hr.getId() : 1L;
+
+        List<com.smarthire.entity.NotificationQueue> queuedEmails = queueRepository.findByHrUserIdOrderByCreatedAtDesc(hrId)
+                .stream()
+                .filter(q -> q.getChannel() == null || "EMAIL".equalsIgnoreCase(q.getChannel()))
+                .toList();
+
+        List<com.smarthire.entity.NotificationDeliveryLog> deliveryLogs = deliveryLogRepository.findByHrUserIdOrderByCreatedAtDesc(hrId)
+                .stream()
+                .filter(l -> l.getChannel() == null || "EMAIL".equalsIgnoreCase(l.getChannel()))
+                .toList();
+
+        List<Map<String, Object>> unifiedList = new ArrayList<>();
+        Set<Long> processedQueueIds = new HashSet<>();
+
+        for (com.smarthire.entity.NotificationQueue q : queuedEmails) {
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", q.getId());
+            m.put("recipientName", (q.getRecipientName() != null && !q.getRecipientName().isBlank()) ? q.getRecipientName() : "Candidate");
+            m.put("recipientEmail", q.getRecipientEmail());
+            m.put("subject", q.getSubject() != null ? q.getSubject() : "Recruitment Notification");
+            m.put("eventType", q.getEventType() != null ? q.getEventType().name() : "EMAIL");
+            m.put("status", q.getStatus() != null ? q.getStatus() : "SENT");
+            m.put("errorMessage", q.getErrorMessage());
+            String dateStr = (q.getCreatedAt() != null) ? q.getCreatedAt().toString() : null;
+            if (dateStr != null && !dateStr.endsWith("Z")) dateStr += "Z";
+            m.put("createdAt", dateStr);
+            unifiedList.add(m);
+            if (q.getId() != null) {
+                processedQueueIds.add(q.getId());
+            }
+        }
+
+        for (com.smarthire.entity.NotificationDeliveryLog logItem : deliveryLogs) {
+            if (logItem.getQueueId() != null && processedQueueIds.contains(logItem.getQueueId())) {
+                continue;
+            }
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", "log_" + logItem.getId());
+            m.put("recipientName", "Candidate");
+            m.put("recipientEmail", logItem.getRecipientEmail());
+            m.put("subject", logItem.getEventType() != null ? logItem.getEventType().name().replace('_', ' ') : "Candidate Notice");
+            m.put("eventType", logItem.getEventType() != null ? logItem.getEventType().name() : "EMAIL");
+            m.put("status", "SUCCESS".equalsIgnoreCase(logItem.getStatus()) ? "SENT" : logItem.getStatus());
+            m.put("errorMessage", ("FAILED".equalsIgnoreCase(logItem.getStatus()) || "FAILURE".equalsIgnoreCase(logItem.getStatus())) ? logItem.getDetails() : null);
+            String dateStr = (logItem.getCreatedAt() != null) ? logItem.getCreatedAt().toString() : null;
+            if (dateStr != null && !dateStr.endsWith("Z")) dateStr += "Z";
+            m.put("createdAt", dateStr);
+            unifiedList.add(m);
+        }
+
+        unifiedList.sort((a, b) -> {
+            String ca = (String) a.get("createdAt");
+            String cb = (String) b.get("createdAt");
+            if (ca == null && cb == null) return 0;
+            if (ca == null) return 1;
+            if (cb == null) return -1;
+            return cb.compareTo(ca);
+        });
+
+        return ResponseEntity.ok(Map.of(
+                "hrUserId", hrId,
+                "history", unifiedList,
+                "rawQueue", queuedEmails,
+                "deliveryLogs", deliveryLogs
+        ));
+    }
+
+    /**
+     * GET /api/dashboard/notification-history/app
+     * Resilient fallback endpoint for retrieving in-app candidate notification history.
+     */
+    @GetMapping({"/notification-history/app", "/history/app"})
+    public ResponseEntity<?> getAppNotificationHistory() {
+        User hr = getAuthenticatedUser();
+        Long hrId = (hr != null) ? hr.getId() : 1L;
+
+        List<com.smarthire.entity.Notification> notifs = notificationRepository.findByHrUserIdOrderByCreatedAtDesc(hrId);
+        List<com.smarthire.entity.NotificationQueue> queuedApp = queueRepository.findByHrUserIdOrderByCreatedAtDesc(hrId)
+                .stream()
+                .filter(q -> "IN_APP".equalsIgnoreCase(q.getChannel()))
+                .toList();
+
+        List<Map<String, Object>> unifiedList = new ArrayList<>();
+        Set<String> processedEvents = new HashSet<>();
+
+        for (com.smarthire.entity.Notification n : notifs) {
+            String dateStr = (n.getCreatedAt() != null) ? n.getCreatedAt().toString() : null;
+            if (dateStr != null && !dateStr.endsWith("Z")) dateStr += "Z";
+
+            String candName = (n.getCandidateName() != null && !n.getCandidateName().isBlank())
+                    ? n.getCandidateName()
+                    : "Candidate";
+
+            String key = (n.getUserEmail() != null ? n.getUserEmail().trim().toLowerCase() : "")
+                    + "_" + (n.getEventType() != null ? n.getEventType() : "")
+                    + "_" + (n.getCreatedAt() != null ? n.getCreatedAt().toLocalDate() : "");
+            processedEvents.add(key);
+
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", n.getId());
+            m.put("candidateName", candName);
+            m.put("userEmail", n.getUserEmail());
+            m.put("jobTitle", n.getJobTitle());
+            m.put("title", n.getTitle() != null ? n.getTitle() : "Candidate In-App Notice");
+            m.put("message", n.getMessage());
+            m.put("eventType", n.getEventType() != null ? n.getEventType() : (n.getActionType() != null ? n.getActionType() : n.getType()));
+            m.put("isRead", n.isRead());
+            m.put("status", n.isRead() ? "READ" : "DELIVERED");
+            m.put("createdAt", dateStr);
+            unifiedList.add(m);
+        }
+
+        for (com.smarthire.entity.NotificationQueue q : queuedApp) {
+            String key = (q.getRecipientEmail() != null ? q.getRecipientEmail().trim().toLowerCase() : "")
+                    + "_" + (q.getEventType() != null ? q.getEventType().name() : "")
+                    + "_" + (q.getCreatedAt() != null ? q.getCreatedAt().toLocalDate() : "");
+
+            if (processedEvents.contains(key) && "SENT".equalsIgnoreCase(q.getStatus())) {
+                continue; // already in list as delivered Notification
+            }
+
+            String candName = (q.getRecipientName() != null && !q.getRecipientName().isBlank())
+                    ? q.getRecipientName()
+                    : "Candidate";
+
+            String dateStr = (q.getCreatedAt() != null) ? q.getCreatedAt().toString() : null;
+            if (dateStr != null && !dateStr.endsWith("Z")) dateStr += "Z";
+
+            String cleanMsg = q.getSubject() != null ? q.getSubject() : "Recruitment In-App Notice";
+            if (q.getEventType() != null) {
+                cleanMsg = switch (q.getEventType()) {
+                    case CANDIDATE_SHORTLISTED -> "Candidate " + candName + " has been shortlisted.";
+                    case REMOVED_FROM_SHORTLIST -> "Candidate " + candName + " status updated.";
+                    case CANDIDATE_REJECTED -> "Candidate " + candName + " application concluded.";
+                    case INTERVIEW_SCHEDULED -> "Interview round scheduled for candidate " + candName + ".";
+                    case INTERVIEW_CANCELLED -> "Interview session cancelled for candidate " + candName + ".";
+                    case INTERVIEW_FEEDBACK -> "Evaluation scorecard and interview feedback published.";
+                    case CANDIDATE_HIRED -> "Offer letter and hiring confirmation pushed to candidate " + candName + ".";
+                    default -> (q.getSubject() != null ? q.getSubject() : "In-App Candidate Notice");
+                };
+            }
+
+            Map<String, Object> m = new LinkedHashMap<>();
+            m.put("id", "queue_" + q.getId());
+            m.put("candidateName", candName);
+            m.put("userEmail", q.getRecipientEmail());
+            m.put("jobTitle", "Candidate Application");
+            m.put("title", q.getSubject() != null ? q.getSubject() : "Candidate Alert");
+            m.put("message", cleanMsg);
+            m.put("eventType", q.getEventType() != null ? q.getEventType().name() : "IN_APP");
+            m.put("isRead", false);
+            m.put("status", q.getStatus() != null ? q.getStatus() : "DELIVERED");
+            m.put("createdAt", dateStr);
+            unifiedList.add(m);
+        }
+
+        unifiedList.sort((a, b) -> {
+            String ca = (String) a.get("createdAt");
+            String cb = (String) b.get("createdAt");
+            if (ca == null && cb == null) return 0;
+            if (ca == null) return 1;
+            if (cb == null) return -1;
+            return cb.compareTo(ca);
+        });
+
+        return ResponseEntity.ok(Map.of(
+                "hrUserId", hrId,
+                "history", unifiedList
+        ));
     }
 }

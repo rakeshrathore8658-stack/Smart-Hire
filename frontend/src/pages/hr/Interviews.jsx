@@ -27,19 +27,21 @@ export default function Interviews() {
   const [scheduleForm, setScheduleForm] = useState({
     candidateId: '',
     interviewRound: 'Technical Round 1',
+    customRoundName: '',
     interviewDate: '',
     interviewTime: '10:00',
     interviewMode: 'Online',
     meetingPlatform: 'Google Meet',
-    meetingLink: 'https://meet.google.com/smarthire-interview',
+    meetingLink: '',
     interviewLocation: '',
-    interviewerName: 'Alex Chen (Principal Architect)',
+    interviewerName: '',
     notes: '',
   });
 
   const [rescheduleForm, setRescheduleForm] = useState({
     candidateId: '',
     interviewRound: '',
+    customRoundName: '',
     interviewDate: '',
     interviewTime: '10:00',
     interviewMode: 'Online',
@@ -49,6 +51,33 @@ export default function Interviews() {
     interviewerName: '',
     reason: '',
   });
+
+  // Short popup / Toast notification state for Email Sent
+  const [emailToast, setEmailToast] = useState(null);
+
+  const showEmailPopup = (candidateName, candidateEmail, actionText = 'Interview invitation email') => {
+    setEmailToast({
+      candidateName,
+      candidateEmail,
+      actionText,
+      time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    });
+    setTimeout(() => setEmailToast(null), 5500);
+  };
+
+  // Helper for dynamic meeting link / address placeholder
+  const getMeetingLinkPlaceholder = (platform, mode) => {
+    if (mode === 'Offline') return 'e.g. SmartHire HQ, Floor 4, Meeting Room B, Tech City';
+    switch (platform) {
+      case 'Zoom Video':
+        return 'e.g. https://zoom.us/j/9876543210?pwd=...';
+      case 'Microsoft Teams':
+        return 'e.g. https://teams.microsoft.com/l/meetup-join/...';
+      case 'Google Meet':
+      default:
+        return 'e.g. https://meet.google.com/abc-defg-hij';
+    }
+  };
 
   const [cancelForm, setCancelForm] = useState({
     candidateId: '',
@@ -117,30 +146,34 @@ export default function Interviews() {
   // Open Schedule Modal
   const handleOpenSchedule = (existing = null) => {
     const todayStr = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const standardValues = ['Technical Round 1', 'Technical Round 2', 'System Architecture', 'Culture & Leadership', 'Managerial Round', 'Final HR Negotiation'];
     if (existing) {
+      const isStd = standardValues.includes(existing.interviewRound);
       setScheduleForm({
         candidateId: existing.id,
-        interviewRound: existing.interviewRound || 'Technical Round 1',
+        interviewRound: isStd ? existing.interviewRound : (existing.interviewRound ? 'CUSTOM_ROUND' : 'Technical Round 1'),
+        customRoundName: isStd ? '' : (existing.interviewRound || ''),
         interviewDate: existing.interviewDateIso ? existing.interviewDateIso.split('T')[0] : todayStr,
         interviewTime: existing.interviewDateIso && existing.interviewDateIso.includes('T') ? existing.interviewDateIso.split('T')[1].substring(0, 5) : '10:00',
         interviewMode: existing.interviewLocation ? 'Offline' : 'Online',
         meetingPlatform: existing.interviewType || 'Google Meet',
-        meetingLink: existing.meetingLink || 'https://meet.google.com/smarthire-interview',
+        meetingLink: existing.meetingLink || '',
         interviewLocation: existing.interviewLocation || '',
-        interviewerName: existing.interviewerName || 'Alex Chen (Principal Architect)',
+        interviewerName: existing.interviewerName || '',
         notes: existing.hrNotes || '',
       });
     } else {
       setScheduleForm({
         candidateId: allCandidates.length > 0 ? allCandidates[0].id : '',
         interviewRound: 'Technical Round 1',
+        customRoundName: '',
         interviewDate: todayStr,
         interviewTime: '10:00',
         interviewMode: 'Online',
         meetingPlatform: 'Google Meet',
-        meetingLink: 'https://meet.google.com/smarthire-interview',
+        meetingLink: '',
         interviewLocation: '',
-        interviewerName: 'Alex Chen (Principal Architect)',
+        interviewerName: '',
         notes: '',
       });
     }
@@ -151,16 +184,19 @@ export default function Interviews() {
   const handleOpenReschedule = (item) => {
     setSelectedInterview(item);
     const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
+    const standardValues = ['Technical Round 1', 'Technical Round 2', 'System Architecture', 'Culture & Leadership', 'Managerial Round', 'Final HR Negotiation'];
+    const isStd = standardValues.includes(item.interviewRound);
     setRescheduleForm({
       candidateId: item.id,
-      interviewRound: item.interviewRound || 'Technical Round 1',
+      interviewRound: isStd ? (item.interviewRound || 'Technical Round 1') : (item.interviewRound ? 'CUSTOM_ROUND' : 'Technical Round 1'),
+      customRoundName: isStd ? '' : (item.interviewRound || ''),
       interviewDate: item.interviewDateIso ? item.interviewDateIso.split('T')[0] : tomorrow,
       interviewTime: item.interviewDateIso && item.interviewDateIso.includes('T') ? item.interviewDateIso.split('T')[1].substring(0, 5) : '11:00',
       interviewMode: item.interviewLocation ? 'Offline' : 'Online',
       meetingPlatform: item.interviewType || 'Google Meet',
-      meetingLink: item.meetingLink || 'https://meet.google.com/smarthire-interview',
+      meetingLink: item.meetingLink || '',
       interviewLocation: item.interviewLocation || '',
-      interviewerName: item.interviewerName || 'Alex Chen (Principal Architect)',
+      interviewerName: item.interviewerName || '',
       reason: 'Slot conflict / panel rescheduled for candidate convenience',
     });
     setShowRescheduleModal(true);
@@ -199,15 +235,29 @@ export default function Interviews() {
   // Submit Schedule
   const handleScheduleSubmit = async (e) => {
     e.preventDefault();
+    if (scheduleForm.interviewRound === 'CUSTOM_ROUND' && !scheduleForm.customRoundName.trim()) {
+      triggerError('Please specify your custom domain interview round name.');
+      return;
+    }
+    const finalRound = scheduleForm.interviewRound === 'CUSTOM_ROUND'
+      ? scheduleForm.customRoundName.trim()
+      : scheduleForm.interviewRound;
+
+    const cand = allCandidates.find((c) => String(c.id) === String(scheduleForm.candidateId));
+    const candName = cand?.candidateName || 'Candidate';
+    const candEmail = cand?.candidateEmail || '';
+
     setSubmitting(true);
     try {
       const fullIso = `${scheduleForm.interviewDate}T${scheduleForm.interviewTime}:00`;
       await api.post('/dashboard/interviews/schedule', {
         ...scheduleForm,
+        interviewRound: finalRound,
         interviewDate: fullIso,
         isReschedule: false,
       });
-      triggerSuccess('Interview scheduled successfully! Real-time notification dispatched to candidate.');
+      showEmailPopup(candName, candEmail, `Interview Round: ${finalRound}`);
+      triggerSuccess(`📧 Interview scheduled! Email notification sent to ${candName}${candEmail ? ` (${candEmail})` : ''} & in-app alert dispatched.`);
       setShowScheduleModal(false);
       fetchInterviews();
     } catch (err) {
@@ -221,15 +271,28 @@ export default function Interviews() {
   // Submit Reschedule
   const handleRescheduleSubmit = async (e) => {
     e.preventDefault();
+    if (rescheduleForm.interviewRound === 'CUSTOM_ROUND' && !rescheduleForm.customRoundName.trim()) {
+      triggerError('Please specify your custom domain interview round name.');
+      return;
+    }
+    const finalRound = rescheduleForm.interviewRound === 'CUSTOM_ROUND'
+      ? rescheduleForm.customRoundName.trim()
+      : rescheduleForm.interviewRound;
+
+    const candName = selectedInterview?.candidateName || 'Candidate';
+    const candEmail = selectedInterview?.candidateEmail || '';
+
     setSubmitting(true);
     try {
       const fullIso = `${rescheduleForm.interviewDate}T${rescheduleForm.interviewTime}:00`;
       await api.post('/dashboard/interviews/schedule', {
         ...rescheduleForm,
+        interviewRound: finalRound,
         interviewDate: fullIso,
         isReschedule: true,
       });
-      triggerSuccess('Interview rescheduled successfully! Updated notification pushed to candidate.');
+      showEmailPopup(candName, candEmail, `Rescheduled Round: ${finalRound}`);
+      triggerSuccess(`📧 Interview rescheduled! Updated email notification sent to ${candName}${candEmail ? ` (${candEmail})` : ''} & in-app alert dispatched.`);
       setShowRescheduleModal(false);
       fetchInterviews();
     } catch (err) {
@@ -296,6 +359,7 @@ export default function Interviews() {
     { value: 'Culture & Leadership', label: 'Culture Fit, Team Collaboration & Leadership', icon: <i className="bi bi-people text-success"></i> },
     { value: 'Managerial Round', label: 'Managerial & Problem Solving Review', icon: <i className="bi bi-person-badge text-warning"></i> },
     { value: 'Final HR Negotiation', label: 'Final HR Negotiation & Compensation Review', icon: <i className="bi bi-cash-stack text-success"></i> },
+    { value: 'CUSTOM_ROUND', label: '✏️ Other / Custom Domain Round (Type your own domain / round name...)', icon: <i className="bi bi-pencil-square text-primary"></i> },
   ];
 
   const onlineMediumOptions = [
@@ -824,6 +888,30 @@ export default function Interviews() {
                     onChange={(val) => setScheduleForm({ ...scheduleForm, interviewRound: val })}
                     options={roundOptions}
                   />
+                  {scheduleForm.interviewRound === 'CUSTOM_ROUND' && (
+                    <div style={{ marginTop: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--accent)' }}>
+                        <i className="bi bi-pencil-square" style={{ marginRight: '6px' }}></i>
+                        Specify Custom Domain Round Name *
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={scheduleForm.customRoundName}
+                        onChange={(e) => setScheduleForm({ ...scheduleForm, customRoundName: e.target.value })}
+                        placeholder="e.g. Sales Pitch Presentation, Financial Modeling, Case Study Review, Portfolio Walkthrough..."
+                        required
+                        autoFocus
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          background: 'var(--bg-input)',
+                          border: '1px solid var(--accent)',
+                          borderRadius: 'var(--radius-md)',
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* Date & Time Row */}
@@ -945,8 +1033,7 @@ export default function Interviews() {
                         className="form-control"
                         value={scheduleForm.meetingLink}
                         onChange={(e) => setScheduleForm({ ...scheduleForm, meetingLink: e.target.value })}
-                        placeholder="https://meet.google.com/..."
-                        required
+                        placeholder={getMeetingLinkPlaceholder(scheduleForm.meetingPlatform, scheduleForm.interviewMode)}
                         style={{
                           width: '100%',
                           padding: '9px 12px',
@@ -991,7 +1078,7 @@ export default function Interviews() {
                     className="form-control"
                     value={scheduleForm.interviewerName}
                     onChange={(e) => setScheduleForm({ ...scheduleForm, interviewerName: e.target.value })}
-                    placeholder="e.g. Dinesh Bhatt (Senior Engineering Manager)"
+                    placeholder="e.g. Alex Chen (Principal Architect)"
                     required
                     style={{
                       width: '100%',
@@ -1124,6 +1211,30 @@ export default function Interviews() {
                     onChange={(val) => setRescheduleForm({ ...rescheduleForm, interviewRound: val })}
                     options={roundOptions}
                   />
+                  {rescheduleForm.interviewRound === 'CUSTOM_ROUND' && (
+                    <div style={{ marginTop: '10px' }}>
+                      <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px', color: 'var(--accent)' }}>
+                        <i className="bi bi-pencil-square" style={{ marginRight: '6px' }}></i>
+                        Specify Custom Domain Round Name *
+                      </label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        value={rescheduleForm.customRoundName}
+                        onChange={(e) => setRescheduleForm({ ...rescheduleForm, customRoundName: e.target.value })}
+                        placeholder="e.g. Sales Pitch Presentation, Financial Modeling, Case Study Review, Portfolio Walkthrough..."
+                        required
+                        autoFocus
+                        style={{
+                          width: '100%',
+                          padding: '9px 12px',
+                          background: 'var(--bg-input)',
+                          border: '1px solid var(--accent)',
+                          borderRadius: 'var(--radius-md)',
+                        }}
+                      />
+                    </div>
+                  )}
                 </div>
 
                 {/* New Date & Time */}
@@ -1190,7 +1301,28 @@ export default function Interviews() {
                     className="form-control"
                     value={rescheduleForm.meetingLink}
                     onChange={(e) => setRescheduleForm({ ...rescheduleForm, meetingLink: e.target.value })}
-                    placeholder="https://meet.google.com/..."
+                    placeholder={getMeetingLinkPlaceholder(rescheduleForm.meetingPlatform, rescheduleForm.interviewMode)}
+                    style={{
+                      width: '100%',
+                      padding: '9px 12px',
+                      background: 'var(--bg-input)',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: 'var(--radius-md)',
+                    }}
+                  />
+                </div>
+
+                {/* Interviewer Name */}
+                <div className="form-group">
+                  <label style={{ display: 'block', fontSize: '0.82rem', fontWeight: 600, marginBottom: '6px' }}>
+                    Interviewer Name &amp; Title
+                  </label>
+                  <input
+                    type="text"
+                    className="form-control"
+                    value={rescheduleForm.interviewerName}
+                    onChange={(e) => setRescheduleForm({ ...rescheduleForm, interviewerName: e.target.value })}
+                    placeholder="e.g. Alex Chen (Principal Architect)"
                     style={{
                       width: '100%',
                       padding: '9px 12px',
@@ -1600,6 +1732,71 @@ export default function Interviews() {
               </div>
             </form>
           </div>
+        </div>
+      )}
+
+      {/* Floating Short Popup Toast: Email Sent to Candidate */}
+      {emailToast && (
+        <div
+          role="alert"
+          aria-live="assertive"
+          style={{
+            position: 'fixed',
+            bottom: '28px',
+            right: '28px',
+            zIndex: 99999,
+            background: 'linear-gradient(135deg, #059669 0%, #10b981 100%)',
+            color: '#ffffff',
+            padding: '14px 20px',
+            borderRadius: '12px',
+            boxShadow: '0 12px 32px rgba(16, 185, 129, 0.4), 0 4px 12px rgba(0,0,0,0.15)',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '12px',
+            maxWidth: '430px',
+            border: '1px solid rgba(255, 255, 255, 0.25)',
+          }}
+        >
+          <div
+            style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              background: 'rgba(255, 255, 255, 0.22)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: '1.3rem',
+              flexShrink: 0,
+            }}
+          >
+            <i className="bi bi-envelope-check-fill"></i>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div style={{ fontWeight: 700, fontSize: '0.92rem', letterSpacing: '0.2px' }}>
+              Email sent to {emailToast.candidateName}
+            </div>
+            <div style={{ fontSize: '0.8rem', opacity: 0.95, marginTop: '2px', lineHeight: 1.3 }}>
+              {emailToast.actionText} dispatched to {emailToast.candidateEmail || 'candidate'} &bull; {emailToast.time}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setEmailToast(null)}
+            style={{
+              background: 'none',
+              border: 'none',
+              color: '#ffffff',
+              cursor: 'pointer',
+              fontSize: '1.25rem',
+              padding: '0 4px',
+              opacity: 0.85,
+              lineHeight: 1,
+            }}
+            title="Dismiss popup"
+          >
+            &times;
+          </button>
         </div>
       )}
     </div>

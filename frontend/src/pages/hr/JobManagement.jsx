@@ -106,6 +106,18 @@ const JobManagement = () => {
       }
     }
 
+    try {
+      if (typeof window !== 'undefined') {
+        const payload = { event: 'DEPARTMENT_CREATED', department: deptToUse };
+        window.dispatchEvent(new CustomEvent('smarthire:sync', { detail: payload }));
+        if (window.BroadcastChannel) {
+          const ch = new BroadcastChannel('smarthire_sync_channel');
+          ch.postMessage(payload);
+          ch.close();
+        }
+      }
+    } catch (_) {}
+
     setDepartment(deptToUse);
     setCustomDeptInput('');
     setCustomDeptError('');
@@ -202,6 +214,18 @@ const JobManagement = () => {
       }
       setModalOpen(false);
       fetchJobs();
+
+      try {
+        if (typeof window !== 'undefined') {
+          const syncPayload = { event: 'JOB_UPDATED', department };
+          window.dispatchEvent(new CustomEvent('smarthire:sync', { detail: syncPayload }));
+          if (window.BroadcastChannel) {
+            const ch = new BroadcastChannel('smarthire_sync_channel');
+            ch.postMessage(syncPayload);
+            ch.close();
+          }
+        }
+      } catch (_) {}
     } catch (err) {
       setFormError(err.response?.data?.message || 'Failed to save job requisition.');
     }
@@ -211,6 +235,18 @@ const JobManagement = () => {
     try {
       await api.delete(`/jobs/${id}`);
       fetchJobs();
+
+      try {
+        if (typeof window !== 'undefined') {
+          const syncPayload = { event: 'JOB_DELETED', id };
+          window.dispatchEvent(new CustomEvent('smarthire:sync', { detail: syncPayload }));
+          if (window.BroadcastChannel) {
+            const ch = new BroadcastChannel('smarthire_sync_channel');
+            ch.postMessage(syncPayload);
+            ch.close();
+          }
+        }
+      } catch (_) {}
     } catch (err) {
       console.error('Failed to delete job:', err);
     }

@@ -374,6 +374,21 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 13b. HttpMessageNotReadableException (e.g. Malformed JSON or type mismatch during request body parsing)
+     */
+    @ExceptionHandler(org.springframework.http.converter.HttpMessageNotReadableException.class)
+    public ResponseEntity<?> handleHttpMessageNotReadable(org.springframework.http.converter.HttpMessageNotReadableException ex, HttpServletRequest request) {
+        log.warn("Malformed JSON payload or type conversion failure on URI {}: {}",
+                request != null ? request.getRequestURI() : "unknown", ex.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of(
+                "status", 400,
+                "error", "Bad Request",
+                "message", "Invalid request body or JSON format. Please verify your input parameters.",
+                "path", request != null ? request.getRequestURI() : "/"
+        ));
+    }
+
+    /**
      * 14. Catch-All for Any Other Unhandled Exception (500)
      */
     @ExceptionHandler(Exception.class)

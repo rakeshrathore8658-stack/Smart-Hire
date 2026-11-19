@@ -245,6 +245,13 @@ public class BulkResumeUploadService {
                         geminiApiKey
                 );
 
+                if (analysisResult != null && analysisResult.getId() != null) {
+                    resumeAnalysisRepository.findById(analysisResult.getId()).ifPresent(ra -> {
+                        ra.setApplicationSource("HR_SCAN");
+                        resumeAnalysisRepository.save(ra);
+                    });
+                }
+
                 Map<String, Object> candidateMap = new LinkedHashMap<>();
                 candidateMap.put("analysisId", analysisResult.getId());
                 candidateMap.put("candidateName", analysisResult.getCandidateName());

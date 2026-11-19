@@ -19,13 +19,15 @@ class NotificationSystemTest {
 
     private NotificationRepository notificationRepository;
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
+    private com.smarthire.service.RealtimeSyncService realtimeSyncService;
     private NotificationService notificationService;
 
     @BeforeEach
     void setUp() {
         notificationRepository = Mockito.mock(NotificationRepository.class);
         eventPublisher = Mockito.mock(org.springframework.context.ApplicationEventPublisher.class);
-        notificationService = new NotificationService(notificationRepository, eventPublisher);
+        realtimeSyncService = Mockito.mock(com.smarthire.service.RealtimeSyncService.class);
+        notificationService = new NotificationService(notificationRepository, eventPublisher, realtimeSyncService);
         Mockito.when(notificationRepository.save(any(Notification.class)))
                 .thenAnswer(invocation -> {
                     Notification n = invocation.getArgument(0);
@@ -39,13 +41,6 @@ class NotificationSystemTest {
     @Test
     @DisplayName("1. Send notification persists notification with normalized email and defaults")
     void testSendNotification_Success() {
-        Mockito.when(notificationRepository.save(any(Notification.class)))
-                .thenAnswer(invocation -> {
-                    Notification n = invocation.getArgument(0);
-                    n.setId(10L);
-                    return n;
-                });
-
         Notification notif = notificationService.sendNotification(
                 "  RakeshRathore8658@GMAIL.COM  ",
                 "Rakesh Rathore",
@@ -56,17 +51,17 @@ class NotificationSystemTest {
         );
 
         assertNotNull(notif);
-        assertEquals(10L, notif.getId());
         assertEquals("rakeshrathore8658@gmail.com", notif.getUserEmail());
         assertEquals("Application Stage Updated: Shortlisted", notif.getTitle());
         assertEquals("STAGE_CHANGE", notif.getType());
         assertFalse(notif.isRead());
+        Mockito.verify(eventPublisher).publishEvent(any(com.smarthire.event.NotificationDispatchEvent.class));
     }
 
     @Test
     @DisplayName("2. HR Action Interview Schedule dispatches valid INTERVIEW notification")
     void testInterviewScheduledNotification() {
-        ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
+        ArgumentCaptor<com.smarthire.event.NotificationDispatchEvent> captor = ArgumentCaptor.forClass(com.smarthire.event.NotificationDispatchEvent.class);
 
         notificationService.sendNotification(
                 "alex.morgan@email.com",
@@ -77,20 +72,18 @@ class NotificationSystemTest {
                 "/dashboard/notifications"
         );
 
-        Mockito.verify(notificationRepository).save(captor.capture());
-        Notification saved = captor.getValue();
+        Mockito.verify(eventPublisher).publishEvent(captor.capture());
+        com.smarthire.event.NotificationDispatchEvent event = captor.getValue();
 
-        assertEquals("alex.morgan@email.com", saved.getUserEmail());
-        assertEquals("INTERVIEW", saved.getType());
-        assertEquals("bi-calendar2-week", saved.getIconClass());
-        assertTrue(saved.getIconStyle().contains("0, 0.15") || saved.getIconStyle().contains("0284c7") || saved.getIconStyle().contains("14, 165"));
-        assertFalse(saved.isRead());
+        assertEquals("alex.morgan@email.com", event.getUserEmail());
+        assertEquals("INTERVIEW", event.getType());
+        assertEquals("Interview Scheduled 📅 (Technical Round 1)", event.getTitle());
     }
 
     @Test
     @DisplayName("3. HR Shortlist Action dispatches SHORTLIST notification with stars icon")
     void testShortlistNotification() {
-        ArgumentCaptor<Notification> captor = ArgumentCaptor.forClass(Notification.class);
+        ArgumentCaptor<com.smarthire.event.NotificationDispatchEvent> captor = ArgumentCaptor.forClass(com.smarthire.event.NotificationDispatchEvent.class);
 
         notificationService.sendNotification(
                 "alex.morgan@email.com",
@@ -101,11 +94,11 @@ class NotificationSystemTest {
                 "/dashboard/analyzerhistory"
         );
 
-        Mockito.verify(notificationRepository).save(captor.capture());
-        Notification saved = captor.getValue();
+        Mockito.verify(eventPublisher).publishEvent(captor.capture());
+        com.smarthire.event.NotificationDispatchEvent event = captor.getValue();
 
-        assertEquals("SHORTLIST", saved.getType());
-        assertEquals("bi-stars", saved.getIconClass());
+        assertEquals("SHORTLIST", event.getType());
+        assertEquals("You have been Shortlisted! ⭐", event.getTitle());
     }
 
     @Test

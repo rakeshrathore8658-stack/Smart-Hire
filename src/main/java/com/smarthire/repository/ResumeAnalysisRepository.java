@@ -98,6 +98,12 @@ public interface ResumeAnalysisRepository extends JpaRepository<ResumeAnalysis, 
             "  AND (ra.stage IS NULL OR LOWER(ra.stage) <> 'archived')")
     long countActiveCandidatesByRecruiter(@org.springframework.data.repository.query.Param("recruiterId") Long recruiterId);
 
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(ra) FROM ResumeAnalysis ra WHERE ra.job IS NOT NULL AND ra.job.id = :jobId")
+    long countByJobId(@org.springframework.data.repository.query.Param("jobId") Long jobId);
+
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(ra) FROM ResumeAnalysis ra WHERE ra.job IS NOT NULL AND ra.job.id IN :jobIds")
+    long countByJobIdIn(@org.springframework.data.repository.query.Param("jobIds") List<Long> jobIds);
+
     @org.springframework.data.jpa.repository.Query("SELECT COUNT(ra) FROM ResumeAnalysis ra " +
             "WHERE (ra.recruiter IS NOT NULL AND ra.recruiter.id = :recruiterId) " +
             "  AND (ra.isArchived = true OR LOWER(ra.stage) = 'archived')")

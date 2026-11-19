@@ -3,11 +3,13 @@ import { Link, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import AnalysisResult from '../../components/common/AnalysisResult';
 import CustomSelect from '../../components/common/CustomSelect';
+import DynamicScreeningForm from '../../components/candidate/DynamicScreeningForm';
 import { useAuth } from '../../context/AuthContext';
 import { useBulkScan } from '../../context/BulkScanContext';
 
 const ResumeAnalyzer = () => {
   const { user } = useAuth();
+  const isHr = Boolean(user && (user.role === 'HR' || user.role === 'RECRUITER' || (typeof user.role === 'string' && user.role.toUpperCase() === 'HR')));
   const {
     isSeekerAnalyzing,
     seekerMinimized,
@@ -66,9 +68,32 @@ const ResumeAnalyzer = () => {
   const [successMessage, setSuccessMessage] = useState('');
   const [analysis, setAnalysis] = useState(null);
   const [showUploadForm, setShowUploadForm] = useState(false);
+  const [screeningCompleted, setScreeningCompleted] = useState(false);
   const [dbJobs, setDbJobs] = useState([]);
 
   const fileInputRef = useRef(null);
+
+  // Restore pending mandatory pre-screening analysis if candidate closed or refreshed browser
+  useEffect(() => {
+    if (isHr) return;
+    try {
+      const saved = localStorage.getItem('smarthire_pending_screening_analysis');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (
+          parsed &&
+          parsed.screeningRequired &&
+          parsed.stage !== 'Screening Completed' &&
+          Array.isArray(parsed.screeningQuestions) &&
+          parsed.screeningQuestions.length > 0
+        ) {
+          setAnalysis(parsed);
+          setShowUploadForm(false);
+          setScreeningCompleted(false);
+        }
+      }
+    } catch (e) {}
+  }, [isHr]);
 
   // Fetch AI providers status dynamically
   useEffect(() => {
@@ -210,6 +235,11 @@ const ResumeAnalyzer = () => {
     if (seekerAnalysisResult) {
       setAnalysis(seekerAnalysisResult);
       setShowUploadForm(false);
+      if (!isHr && seekerAnalysisResult.screeningRequired && seekerAnalysisResult.screeningQuestions?.length > 0) {
+        try {
+          localStorage.setItem('smarthire_pending_screening_analysis', JSON.stringify(seekerAnalysisResult));
+        } catch (e) {}
+      }
       if (seekerAnalysisResult.fallbackUsed) {
         setSuccessMessage(
           `Analysis completed using ${seekerAnalysisResult.aiProvider}. (Note: ${seekerAnalysisResult.fallbackReason || 'Defaulted to local engine'})`
@@ -220,7 +250,7 @@ const ResumeAnalyzer = () => {
         );
       }
     }
-  }, [seekerAnalysisResult]);
+  }, [seekerAnalysisResult, isHr]);
 
   useEffect(() => {
     if (seekerError) {
@@ -232,6 +262,7 @@ const ResumeAnalyzer = () => {
     e.preventDefault();
     setErrorMessage('');
     setSuccessMessage('');
+    setScreeningCompleted(false);
 
     if (!file && !analysis) {
       setErrorMessage('Please select or drop a resume file to analyze.');
@@ -257,6 +288,7 @@ const ResumeAnalyzer = () => {
       formData.append('jobRole', effectiveRole);
       formData.append('jobDescription', jobDescription);
       formData.append('aiProvider', aiProvider);
+      formData.append('source', 'JOB_SEEKER');
       if (selectedModel) formData.append('model', selectedModel);
       if (activeEmail) formData.append('email', activeEmail);
 
@@ -272,6 +304,11 @@ const ResumeAnalyzer = () => {
       if (result) {
         setAnalysis(result);
         setShowUploadForm(false);
+        if (!isHr && result.screeningRequired && result.screeningQuestions?.length > 0) {
+          try {
+            localStorage.setItem('smarthire_pending_screening_analysis', JSON.stringify(result));
+          } catch (e) {}
+        }
         if (result.fallbackUsed) {
           setSuccessMessage(
             `Analysis completed using ${result.aiProvider}. (Note: ${result.fallbackReason || 'Defaulted to local engine'})`
@@ -806,7 +843,58 @@ const ResumeAnalyzer = () => {
             </div>
           )}
 
+          {/* Pre-Screening Completion Banner (When candidate has submitted answers) */}
+          {(screeningCompleted || analysis.stage === 'Screening Completed') && (
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '12px',
+                padding: '14px 20px',
+                marginBottom: '18px',
+                background: '#f0fdf4',
+                borderRadius: 'var(--radius-md)',
+                border: '1.5px solid #86efac',
+                color: '#166534',
+                boxShadow: '0 2px 8px rgba(16, 185, 129, 0.08)'
+              }}
+            >
+              <i className="bi bi-patch-check-fill text-success" style={{ fontSize: '1.5rem', flexShrink: 0 }}></i>
+              <div>
+                <strong style={{ fontSize: '0.94rem' }}>Candidate Pre-Screening Questionnaire Completed</strong>
+                <p style={{ margin: '2px 0 0', fontSize: '0.84rem', color: '#15803d' }}>
+                  Your answers have been verified and submitted to the recruiter. Your application is officially marked as <strong>Screening Completed</strong>.
+                </p>
+              </div>
+            </div>
+          )}
+
           <AnalysisResult analysis={analysis} context="user" />
+
+          {/* Dynamic Candidate Pre-Screening Questionnaire POPUP MODAL TAKEOVER */}
+          {/* Unlocked immediately upon scan completion when ATS criteria matched. Mandatory & Non-Dismissible */}
+          {!isHr && analysis.screeningRequired && !screeningCompleted && analysis.stage !== 'Screening Completed' && analysis.screeningQuestions && analysis.screeningQuestions.length > 0 && (
+            <DynamicScreeningForm
+              applicationId={analysis.applicationId || analysis.id}
+              jobTitle={analysis.targetJobRole}
+              atsScore={analysis.overallScore || analysis.atsScore}
+              atsThreshold={analysis.atsThreshold || 60}
+              questions={analysis.screeningQuestions}
+              onCompleted={(data) => {
+                setScreeningCompleted(true);
+                try {
+                  localStorage.removeItem('smarthire_pending_screening_analysis');
+                  localStorage.removeItem('smarthire_pending_screening_form');
+                } catch (e) {}
+                setAnalysis((prev) => ({
+                  ...prev,
+                  screeningRequired: false,
+                  stage: 'Screening Completed'
+                }));
+                setSuccessMessage('Screening responses submitted successfully! Your application is now marked as Screening Completed.');
+              }}
+            />
+          )}
         </section>
       )}
 

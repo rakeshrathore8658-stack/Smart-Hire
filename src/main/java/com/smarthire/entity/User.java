@@ -68,6 +68,9 @@ public class User {
     @Column(name = "notif_interview_updates")
     private Boolean notifInterviewUpdates = true;
 
+    @Column(name = "role_switch_count", nullable = false)
+    private int roleSwitchCount = 0;
+
     @Column(name = "tour_completed")
     private Boolean tourCompleted = false;
 
@@ -252,6 +255,14 @@ public class User {
 
     public void setTourSkipped(Boolean tourSkipped) {
         this.tourSkipped = (tourSkipped != null) ? tourSkipped : false;
+    }
+
+    public int getRoleSwitchCount() {
+        return roleSwitchCount;
+    }
+
+    public void setRoleSwitchCount(int roleSwitchCount) {
+        this.roleSwitchCount = roleSwitchCount;
     }
 
     public boolean isTourSeen() {

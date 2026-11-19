@@ -52,6 +52,9 @@ class CandidateDeduplicationTest {
     @Mock
     private com.fasterxml.jackson.databind.ObjectMapper objectMapper;
 
+    @Mock
+    private com.smarthire.repository.UserRepository userRepository;
+
     @InjectMocks
     private ResumeAnalysisService resumeAnalysisService;
 

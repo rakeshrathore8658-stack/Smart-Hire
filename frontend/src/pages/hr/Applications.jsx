@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import api from '../../api/client';
 import CustomSelect from '../../components/common/CustomSelect';
@@ -12,6 +12,7 @@ const Applications = () => {
   const initialStage = searchParams.get('stage') || '';
 
   const [selectedStage, setSelectedStage] = useState(initialStage);
+  const [selectedSource, setSelectedSource] = useState('');
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
   const [successMessage, setSuccessMessage] = useState('');
@@ -133,7 +134,45 @@ const Applications = () => {
     { value: 'Rejected', label: 'Rejected', icon: <i className="bi bi-x-circle text-danger"></i> },
   ];
 
+  const seekerCount = useMemo(
+    () => applications.filter((c) => (c.applicationSource || '').toUpperCase() === 'JOB_SEEKER').length,
+    [applications]
+  );
+  const hrScanCount = useMemo(
+    () => applications.filter((c) => (c.applicationSource || '').toUpperCase() === 'HR_SCAN').length,
+    [applications]
+  );
+
+  const sourceOptions = useMemo(
+    () => [
+      {
+        value: '',
+        label: 'All Sources',
+        badge: String(applications.length),
+        icon: <i className="bi bi-people-fill text-muted"></i>,
+      },
+      {
+        value: 'JOB_SEEKER',
+        label: 'Job Seeker Portal',
+        badge: `${seekerCount}`,
+        icon: <i className="bi bi-globe2 text-primary"></i>,
+      },
+      {
+        value: 'HR_SCAN',
+        label: 'Scanned by HR',
+        badge: `${hrScanCount}`,
+        icon: <i className="bi bi-person-workspace text-warning"></i>,
+      },
+    ],
+    [applications.length, seekerCount, hrScanCount]
+  );
+
   const filtered = applications.filter((app) => {
+    if (selectedSource) {
+      if ((app.applicationSource || '').toUpperCase() !== selectedSource.toUpperCase()) {
+        return false;
+      }
+    }
     if (!selectedStage || selectedStage === 'all') return true;
     const stage = (app.displayStage || app.stage || '').toLowerCase();
     const filter = selectedStage.toLowerCase();
@@ -282,15 +321,29 @@ const Applications = () => {
               Showing {filtered.length} active applicant records from the database.
             </p>
           </div>
-          {selectedStage && (
-            <button
-              type="button"
-              className="btn btn-ghost btn-sm"
-              onClick={() => handleStageFilter('')}
-            >
-              Reset Filter &times;
-            </button>
-          )}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+            <div style={{ minWidth: '180px' }}>
+              <CustomSelect
+                size="sm"
+                value={selectedSource}
+                onChange={(val) => setSelectedSource(val)}
+                options={sourceOptions}
+                placeholder="All Sources"
+              />
+            </div>
+            {(selectedStage || selectedSource) && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  handleStageFilter('');
+                  setSelectedSource('');
+                }}
+              >
+                Reset Filter &times;
+              </button>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -321,7 +374,48 @@ const Applications = () => {
                         </div>
                         <div>
                           <strong className="candidate-name-link">{cand.candidateName}</strong>
-                          <small className="candidate-email-muted">{cand.candidateEmail}</small>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', flexWrap: 'wrap' }}>
+                            <small className="candidate-email-muted">{cand.candidateEmail}</small>
+                            {(cand.applicationSource || '').toUpperCase() === 'JOB_SEEKER' ? (
+                              <span
+                                className="badge"
+                                title="Candidate applied directly via Job Seeker Portal"
+                                style={{
+                                  background: 'rgba(59, 130, 246, 0.12)',
+                                  color: '#2563eb',
+                                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                                  borderRadius: '12px',
+                                  fontSize: '0.65rem',
+                                  padding: '1px 6px',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                              >
+                                <i className="bi bi-globe2"></i> Job Seeker
+                              </span>
+                            ) : (
+                              <span
+                                className="badge"
+                                title="Resume scanned or uploaded by HR Recruiter"
+                                style={{
+                                  background: 'rgba(245, 158, 11, 0.12)',
+                                  color: '#d97706',
+                                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                                  borderRadius: '12px',
+                                  fontSize: '0.65rem',
+                                  padding: '1px 6px',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '3px',
+                                }}
+                              >
+                                <i className="bi bi-person-workspace"></i> HR Scan
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>
@@ -354,7 +448,7 @@ const Applications = () => {
                     </td>
                     <td>
                       <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-                        <Link to={`/dashboard/candidates/${cand.id}`} className="btn btn-secondary btn-sm">
+                        <Link to={`/dashboard/applications/${cand.id}`} className="btn btn-secondary btn-sm" title="View Complete Application & Screening Responses">
                           Details
                         </Link>
                         <button

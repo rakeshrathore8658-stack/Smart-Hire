@@ -82,6 +82,24 @@ public class Notification {
     @Builder.Default
     private boolean isRead = false;
 
+    @Column(name = "recipient_user_id")
+    private Long recipientUserId;
+
+    @Column(name = "hr_user_id")
+    private Long hrUserId;
+
+    @Column(name = "job_id")
+    private Long jobId;
+
+    @Column(name = "application_id")
+    private Long applicationId;
+
+    @Column(name = "event_type", length = 100)
+    private String eventType;
+
+    @Column(name = "read_at")
+    private LocalDateTime readAt;
+
     @com.fasterxml.jackson.annotation.JsonFormat(shape = com.fasterxml.jackson.annotation.JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'", timezone = "UTC")
     @Column(name = "created_at", nullable = false)
     private LocalDateTime createdAt;
@@ -96,7 +114,7 @@ public class Notification {
     public String getTimeAgo() {
         if (createdAt == null) return "Just now";
         try {
-            Duration duration = Duration.between(createdAt, LocalDateTime.now(java.time.ZoneOffset.UTC));
+            Duration duration = Duration.between(createdAt, LocalDateTime.now());
             long seconds = duration.getSeconds();
             if (seconds < 60) return "Just now";
             long minutes = seconds / 60;

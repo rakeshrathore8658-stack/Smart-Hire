@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import api from '../../api/client';
 import CustomSelect from '../../components/common/CustomSelect';
@@ -45,6 +45,7 @@ const Candidates = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRole, setSelectedRole] = useState('');
   const [selectedScore, setSelectedScore] = useState('');
+  const [selectedSource, setSelectedSource] = useState('');
   const [loading, setLoading] = useState(true);
   const [actionSuccess, setActionSuccess] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState(null);
@@ -112,6 +113,39 @@ const Candidates = () => {
     { value: 'mid', label: 'Moderate Match (65-84%)', badge: '65-84%', icon: <i className="bi bi-shield-check text-warning"></i> },
     { value: 'low', label: 'Low Match (<65%)', badge: '<65%', icon: <i className="bi bi-exclamation-circle text-danger"></i> },
   ];
+
+  const seekerCount = useMemo(
+    () => candidates.filter((c) => (c.applicationSource || '').toUpperCase() === 'JOB_SEEKER').length,
+    [candidates]
+  );
+  const hrScanCount = useMemo(
+    () => candidates.filter((c) => (c.applicationSource || '').toUpperCase() === 'HR_SCAN').length,
+    [candidates]
+  );
+
+  const sourceOptions = useMemo(
+    () => [
+      {
+        value: '',
+        label: 'All Application Sources',
+        badge: String(candidates.length),
+        icon: <i className="bi bi-people-fill text-muted"></i>,
+      },
+      {
+        value: 'JOB_SEEKER',
+        label: 'Applied by Job Seeker',
+        badge: `${seekerCount} Seeker${seekerCount === 1 ? '' : 's'}`,
+        icon: <i className="bi bi-globe2 text-primary"></i>,
+      },
+      {
+        value: 'HR_SCAN',
+        label: 'Scanned by HR',
+        badge: `${hrScanCount} Scan${hrScanCount === 1 ? '' : 's'}`,
+        icon: <i className="bi bi-person-workspace text-warning"></i>,
+      },
+    ],
+    [candidates.length, seekerCount, hrScanCount]
+  );
 
   const toggleShortlist = async (id, e) => {
     e?.stopPropagation();
@@ -226,7 +260,11 @@ const Candidates = () => {
     else if (selectedScore === 'mid') matchesScore = score >= 65 && score < 85;
     else if (selectedScore === 'low') matchesScore = score < 65;
 
-    return matchesSearch && matchesRole && matchesScore;
+    const matchesSource =
+      !selectedSource ||
+      (item.applicationSource || '').toUpperCase() === selectedSource.toUpperCase();
+
+    return matchesSearch && matchesRole && matchesScore && matchesSource;
   });
 
   const shortlistedCount = candidates.filter((c) => c.shortlisted).length;
@@ -325,8 +363,8 @@ const Candidates = () => {
             />
           </div>
 
-          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '1 1 auto' }}>
-            <div style={{ minWidth: 'min(180px, 100%)', flex: '1 1 180px' }}>
+          <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap', flex: '1 1 auto', alignItems: 'center' }}>
+            <div style={{ minWidth: 'min(170px, 100%)', flex: '1 1 170px' }}>
               <CustomSelect
                 value={selectedRole}
                 onChange={(val) => setSelectedRole(val)}
@@ -335,7 +373,7 @@ const Candidates = () => {
               />
             </div>
 
-            <div style={{ minWidth: 'min(180px, 100%)', flex: '1 1 180px' }}>
+            <div style={{ minWidth: 'min(170px, 100%)', flex: '1 1 170px' }}>
               <CustomSelect
                 value={selectedScore}
                 onChange={(val) => setSelectedScore(val)}
@@ -343,6 +381,42 @@ const Candidates = () => {
                 placeholder="All Match Scores"
               />
             </div>
+
+            <div style={{ minWidth: 'min(210px, 100%)', flex: '1 1 210px' }} data-tour="source-filter">
+              <CustomSelect
+                value={selectedSource}
+                onChange={(val) => setSelectedSource(val)}
+                options={sourceOptions}
+                placeholder="All Application Sources"
+              />
+            </div>
+
+            {(selectedRole || selectedScore || selectedSource || searchQuery) && (
+              <button
+                type="button"
+                className="btn btn-ghost btn-sm"
+                onClick={() => {
+                  setSearchQuery('');
+                  setSelectedRole('');
+                  setSelectedScore('');
+                  setSelectedSource('');
+                }}
+                title="Reset all active filters"
+                style={{
+                  fontSize: '0.8rem',
+                  color: 'var(--text-muted)',
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  padding: '6px 12px',
+                  borderRadius: '8px',
+                  border: '1px dashed var(--border-color)',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                <i className="bi bi-x-circle"></i> Reset Filters
+              </button>
+            )}
           </div>
         </div>
       </article>
@@ -411,9 +485,50 @@ const Candidates = () => {
                           <strong style={{ display: 'block', fontSize: '0.9rem', color: 'var(--text-primary)' }}>
                             {cand.candidateName || 'Unnamed Candidate'}
                           </strong>
-                          <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
-                            {cand.candidateEmail || 'No email provided'}
-                          </span>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '3px', flexWrap: 'wrap' }}>
+                            <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                              {cand.candidateEmail || 'No email provided'}
+                            </span>
+                            {(cand.applicationSource || '').toUpperCase() === 'JOB_SEEKER' ? (
+                              <span
+                                className="badge"
+                                title="Candidate applied directly via Job Seeker Portal"
+                                style={{
+                                  background: 'rgba(59, 130, 246, 0.12)',
+                                  color: '#2563eb',
+                                  border: '1px solid rgba(59, 130, 246, 0.3)',
+                                  borderRadius: '12px',
+                                  fontSize: '0.68rem',
+                                  padding: '1px 8px',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <i className="bi bi-globe2"></i> Job Seeker Portal
+                              </span>
+                            ) : (
+                              <span
+                                className="badge"
+                                title="Resume scanned or uploaded by HR Recruiter"
+                                style={{
+                                  background: 'rgba(245, 158, 11, 0.12)',
+                                  color: '#d97706',
+                                  border: '1px solid rgba(245, 158, 11, 0.3)',
+                                  borderRadius: '12px',
+                                  fontSize: '0.68rem',
+                                  padding: '1px 8px',
+                                  fontWeight: 700,
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px',
+                                }}
+                              >
+                                <i className="bi bi-person-workspace"></i> HR Scan
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </td>

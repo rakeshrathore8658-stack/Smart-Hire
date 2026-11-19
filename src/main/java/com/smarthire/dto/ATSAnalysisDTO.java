@@ -61,6 +61,31 @@ public class ATSAnalysisDTO {
 
     private String differenceSummary;
 
+    private Boolean success;
+    private Long applicationId;
+    private Double atsScore;
+    private String message;
+    private String resumeUrl;
+    private Boolean eligibleForScreening;
+    private Boolean screeningRequired;
+    private Long screeningJobId;
+    @Builder.Default
+    private Integer atsThreshold = 60;
+
+    @Builder.Default
+    private List<JobQuestionDTO> screeningQuestions = new ArrayList<>();
+
+    private String applicationSource;
+    private String sourceLabel;
+
+    public Long getApplicationId() {
+        return applicationId != null ? applicationId : id;
+    }
+
+    public Double getAtsScore() {
+        return atsScore != null ? atsScore : (double) overallScore;
+    }
+
     public List<String> getMatchedSkillsList() {
         if (skillsAnalysis != null && skillsAnalysis.getMatchedSkills() != null) {
             return skillsAnalysis.getMatchedSkills();

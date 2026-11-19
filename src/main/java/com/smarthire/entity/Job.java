@@ -76,6 +76,14 @@ public class Job {
     @Builder.Default
     private Integer shortlistedCount = 0;
 
+    @Column(name = "screening_enabled")
+    @Builder.Default
+    private Boolean screeningEnabled = false;
+
+    @Column(name = "ats_threshold")
+    @Builder.Default
+    private Integer atsThreshold = 60;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "recruiter_id")
     @JsonIgnore
@@ -116,6 +124,14 @@ public class Job {
 
     public int getShortlistedCount() {
         return shortlistedCount != null ? shortlistedCount : 0;
+    }
+
+    public Boolean getScreeningEnabled() {
+        return screeningEnabled != null ? screeningEnabled : false;
+    }
+
+    public Integer getAtsThreshold() {
+        return atsThreshold != null ? atsThreshold : 60;
     }
 
     public String getFormattedDate() {

@@ -25,8 +25,11 @@ export const NotificationProvider = ({ children }) => {
       });
       if (res.data) {
         const list = res.data.notifications || [];
-        setNotifications(list);
-        setUnreadCount(res.data.unreadCount ?? list.filter((n) => !n.isRead).length);
+        const filteredList = userEmail
+          ? list.filter((n) => !n.userEmail || n.userEmail.trim().toLowerCase() === userEmail)
+          : list;
+        setNotifications(filteredList);
+        setUnreadCount(res.data.unreadCount ?? filteredList.filter((n) => !n.isRead).length);
       }
     } catch (err) {
       console.warn('Failed to load notifications from database:', err);
@@ -40,6 +43,11 @@ export const NotificationProvider = ({ children }) => {
     if (!socketRef.current) {
       const socket = new NotificationSocket(userEmail, userRole, (newNotif) => {
         if (!newNotif || !newNotif.id) return;
+        // Strict isolation guard: verify that the notification recipient matches currently logged in user
+        const targetEmail = (newNotif.userEmail || newNotif.recipientEmail || '').trim().toLowerCase();
+        if (targetEmail && userEmail && targetEmail !== userEmail) {
+          return; // Drop candidate notifications from HR view and vice versa
+        }
         setNotifications((prev) => {
           if (prev.some((n) => n.id === newNotif.id)) return prev;
           return [newNotif, ...prev];
@@ -77,6 +85,25 @@ export const NotificationProvider = ({ children }) => {
     );
     setUnreadCount((prev) => Math.max(0, prev - 1));
 
+    // Broadcast instant sync across tabs in same browser
+    try {
+      if (typeof window !== 'undefined') {
+        const payload = {
+          event: 'NOTIFICATION_READ',
+          action: 'UPDATE',
+          notificationId: id,
+          isRead: true,
+          status: 'READ',
+        };
+        window.dispatchEvent(new CustomEvent('smarthire:sync', { detail: payload }));
+        if (window.BroadcastChannel) {
+          const ch = new BroadcastChannel('smarthire_sync_channel');
+          ch.postMessage(payload);
+          ch.close();
+        }
+      }
+    } catch (_) {}
+
     try {
       await api.post(`/notifications/${id}/read`);
     } catch (err) {
@@ -89,6 +116,25 @@ export const NotificationProvider = ({ children }) => {
     // Immediate optimistic update - clear badge completely
     setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
     setUnreadCount(0);
+
+    // Broadcast instant sync across tabs in same browser
+    try {
+      if (typeof window !== 'undefined') {
+        const payload = {
+          event: 'NOTIFICATION_READ',
+          action: 'UPDATE_ALL',
+          userEmail: userEmail,
+          isRead: true,
+          status: 'READ',
+        };
+        window.dispatchEvent(new CustomEvent('smarthire:sync', { detail: payload }));
+        if (window.BroadcastChannel) {
+          const ch = new BroadcastChannel('smarthire_sync_channel');
+          ch.postMessage(payload);
+          ch.close();
+        }
+      }
+    } catch (_) {}
 
     try {
       await api.post('/notifications/mark-all-read', null, {

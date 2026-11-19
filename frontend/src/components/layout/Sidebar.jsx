@@ -47,16 +47,18 @@ const Sidebar = ({ isMobileOpen, isCollapsed, toggleSidebar, closeSidebar, close
         )}
       </div>
 
-      {/* Role Indicator Pill */}
-      <div className="sidebar-role-indicator">
-        <span className={`sidebar-role-badge ${isHr ? 'role-hr' : 'role-seeker'}`}>
-          <i className={`bi ${isHr ? 'bi-briefcase' : 'bi-person-badge'} badge-icon`}></i>
-          <span className="role-text">{isHr ? 'RECRUITER PORTAL' : 'JOB SEEKER PORTAL'}</span>
-        </span>
-      </div>
+      {/* Role Indicator Pill (Only shown for Job Seeker, removed for HR) */}
+      {!isHr && (
+        <div className="sidebar-role-indicator">
+          <span className="sidebar-role-badge role-seeker">
+            <i className="bi bi-person-badge badge-icon"></i>
+            <span className="role-text">JOB SEEKER PORTAL</span>
+          </span>
+        </div>
+      )}
 
-      {/* Navigation Scroll Container */}
-      <div className="sidebar-nav-container">
+      {/* Navigation Container (Non-scrollable) */}
+      <div className="sidebar-nav-container" style={{ overflowY: 'hidden', overflowX: 'hidden' }}>
         {/* Job Seeker Navigation */}
         {!isHr && (
           <div className="sidebar-role-menu" id="seekerSidebarNav">
@@ -256,16 +258,6 @@ const Sidebar = ({ isMobileOpen, isCollapsed, toggleSidebar, closeSidebar, close
         <div className="sidebar-section-label sidebar-section-spaced">ACCOUNT &amp; PREFERENCES</div>
         <nav className="sidebar-nav" aria-label="Account Navigation">
           <NavLink
-            to="/dashboard/profile"
-            className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
-            onClick={closeMobileOnly}
-            title="User Profile"
-          >
-            <span className="sidebar-icon" aria-hidden="true"><i className="bi bi-person"></i></span>
-            <span className="sidebar-link-text">Profile</span>
-          </NavLink>
-
-          <NavLink
             to="/dashboard/settings"
             className={({ isActive }) => `sidebar-link ${isActive ? 'active' : ''}`}
             onClick={closeMobileOnly}
@@ -296,24 +288,15 @@ const Sidebar = ({ isMobileOpen, isCollapsed, toggleSidebar, closeSidebar, close
           </NavLink>
         </nav>
 
-        {/* Sidebar Bottom Action / Promotion Card */}
-        <div className="sidebar-bottom">
-          {!isHr ? (
+        {/* Sidebar Bottom Action - Only Sign Out for HR, No scrollbar */}
+        <div className="sidebar-bottom" style={{ marginTop: 'auto', paddingTop: '8px' }}>
+          {!isHr && (
             <div className="sidebar-help-card">
               <span className="help-icon" aria-hidden="true"><i className="bi bi-stars"></i></span>
               <h3>Ready for your next role?</h3>
               <p>Analyze your resume against top industry profiles to stand out.</p>
               <Link to="/dashboard/resumeanalyzer" onClick={closeMobileOnly}>
                 Start ATS Scan &rarr;
-              </Link>
-            </div>
-          ) : (
-            <div className="sidebar-help-card">
-              <span className="help-icon" aria-hidden="true"><i className="bi bi-people"></i></span>
-              <h3>Hire smarter &amp; faster</h3>
-              <p>Screen resumes with AI match scores and structured interview feedback.</p>
-              <Link to="/dashboard/jobs/new" onClick={closeMobileOnly}>
-                Post New Vacancy &rarr;
               </Link>
             </div>
           )}

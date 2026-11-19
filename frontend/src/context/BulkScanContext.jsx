@@ -92,6 +92,10 @@ export const BulkScanProvider = ({ children }) => {
             ? (sessionStorage.getItem('smarthire_user_email') || localStorage.getItem('smarthire_user_email') || '')
             : '');
 
+      if (formData && !formData.has('source')) {
+        formData.append('source', 'JOB_SEEKER');
+      }
+
       const res = await api.post('/analysis/analyze', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
@@ -206,6 +210,7 @@ export const BulkScanProvider = ({ children }) => {
         formData.append('jobRole', jobTitle);
         formData.append('jobDescription', jobDesc);
         formData.append('aiProvider', effectiveProvider);
+        formData.append('source', 'HR_SCAN');
         if (effectiveModel) {
           formData.append('model', effectiveModel);
         }

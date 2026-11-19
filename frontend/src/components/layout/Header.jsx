@@ -21,7 +21,48 @@ const Header = ({ pageTitle, toggleSidebar, isCollapsed, isMobileOpen }) => {
   const [selectedModalNotif, setSelectedModalNotif] = useState(null);
 
   const profileRef = useRef(null);
+  const profileTimeoutRef = useRef(null);
   const notifsRef = useRef(null);
+  const notifsTimeoutRef = useRef(null);
+
+  const handleProfileMouseEnter = () => {
+    if (profileTimeoutRef.current) {
+      clearTimeout(profileTimeoutRef.current);
+      profileTimeoutRef.current = null;
+    }
+    setProfileOpen(true);
+  };
+
+  const handleProfileMouseLeave = () => {
+    profileTimeoutRef.current = setTimeout(() => {
+      setProfileOpen(false);
+    }, 220);
+  };
+
+  const handleNotifsMouseEnter = () => {
+    if (notifsTimeoutRef.current) {
+      clearTimeout(notifsTimeoutRef.current);
+      notifsTimeoutRef.current = null;
+    }
+    setNotifsOpen(true);
+  };
+
+  const handleNotifsMouseLeave = () => {
+    notifsTimeoutRef.current = setTimeout(() => {
+      setNotifsOpen(false);
+    }, 220);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (profileTimeoutRef.current) {
+        clearTimeout(profileTimeoutRef.current);
+      }
+      if (notifsTimeoutRef.current) {
+        clearTimeout(notifsTimeoutRef.current);
+      }
+    };
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e) => {
@@ -119,8 +160,13 @@ const Header = ({ pageTitle, toggleSidebar, isCollapsed, isMobileOpen }) => {
             </button>
           )}
 
-          {/* Notifications Dropdown */}
-          <div className="notifications-dropdown-wrapper" ref={notifsRef}>
+          {/* Notifications Dropdown (Hover to Open/Close + Click Toggle) */}
+          <div
+            className="notifications-dropdown-wrapper"
+            ref={notifsRef}
+            onMouseEnter={handleNotifsMouseEnter}
+            onMouseLeave={handleNotifsMouseLeave}
+          >
             <button
               type="button"
               className="topbar-icon-button"
@@ -254,8 +300,13 @@ const Header = ({ pageTitle, toggleSidebar, isCollapsed, isMobileOpen }) => {
             <span className="icon-sun" aria-hidden="true"><i className="bi bi-sun"></i></span>
           </button>
 
-          {/* User Profile Dropdown */}
-          <div className="profile-dropdown-wrapper" ref={profileRef}>
+          {/* User Profile Dropdown (Hover to Open/Close) */}
+          <div
+            className="profile-dropdown-wrapper"
+            ref={profileRef}
+            onMouseEnter={handleProfileMouseEnter}
+            onMouseLeave={handleProfileMouseLeave}
+          >
             <button
               type="button"
               className={`topbar-profile-trigger ${profileOpen ? 'is-active' : ''}`}

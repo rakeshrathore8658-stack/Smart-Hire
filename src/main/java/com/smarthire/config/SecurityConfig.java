@@ -42,7 +42,8 @@ public class SecurityConfig {
     private final CustomOAuth2UserService customOAuth2UserService;
     private final OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler;
     private final OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler;
-    private final JwtAuthenticationFilter jwtAuthenticationFilter;
+    private final com.smarthire.security.jwt.JwtUtil jwtUtil;
+    private final com.smarthire.repository.UserRepository userRepository;
     private final org.springframework.security.oauth2.client.registration.ClientRegistrationRepository clientRegistrationRepository;
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -52,7 +53,8 @@ public class SecurityConfig {
             CustomOAuth2UserService customOAuth2UserService,
             OAuth2AuthenticationSuccessHandler oAuth2AuthenticationSuccessHandler,
             OAuth2AuthenticationFailureHandler oAuth2AuthenticationFailureHandler,
-            JwtAuthenticationFilter jwtAuthenticationFilter,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.smarthire.security.jwt.JwtUtil jwtUtil,
+            @org.springframework.beans.factory.annotation.Autowired(required = false) com.smarthire.repository.UserRepository userRepository,
             @org.springframework.beans.factory.annotation.Autowired(required = false) org.springframework.security.oauth2.client.registration.ClientRegistrationRepository clientRegistrationRepository)
     {
         this.userDetailsService = userDetailsService;
@@ -60,8 +62,17 @@ public class SecurityConfig {
         this.customOAuth2UserService = customOAuth2UserService;
         this.oAuth2AuthenticationSuccessHandler = oAuth2AuthenticationSuccessHandler;
         this.oAuth2AuthenticationFailureHandler = oAuth2AuthenticationFailureHandler;
-        this.jwtAuthenticationFilter = jwtAuthenticationFilter;
+        this.jwtUtil = jwtUtil;
+        this.userRepository = userRepository;
         this.clientRegistrationRepository = clientRegistrationRepository;
+    }
+
+    @Bean
+    public JwtAuthenticationFilter jwtAuthenticationFilter() {
+        if (jwtUtil == null || userRepository == null) {
+            return null;
+        }
+        return new JwtAuthenticationFilter(jwtUtil, userRepository);
     }
 
     @Bean
@@ -273,7 +284,10 @@ public class SecurityConfig {
                         .permitAll()
                 );
 
-        http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
+        JwtAuthenticationFilter filter = jwtAuthenticationFilter();
+        if (filter != null) {
+            http.addFilterBefore(filter, UsernamePasswordAuthenticationFilter.class);
+        }
 
         return http.build();
     }

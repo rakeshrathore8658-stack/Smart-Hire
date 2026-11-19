@@ -71,6 +71,8 @@ public class SettingsApiController {
         data.put("notifResumeScan", user.isNotifResumeScan());
         data.put("notifJobInsights", user.isNotifJobInsights());
         data.put("notifInterviewUpdates", user.isNotifInterviewUpdates());
+        data.put("roleSwitchCount", user.getRoleSwitchCount());
+        data.put("canSwitchRole", user.getRoleSwitchCount() < 1);
 
         return ResponseEntity.ok(data);
     }
@@ -292,6 +294,15 @@ public class SettingsApiController {
 
         log.info("Switching role strictly for target User ID: {}, Email: {}", user.getId(), user.getEmail());
 
+        if (user.getRoleSwitchCount() >= 1) {
+            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of(
+                    "success", false,
+                    "message", "Portal switch limit reached. Account workspace mode can strictly be switched only once per account.",
+                    "canSwitchRole", false,
+                    "roleSwitchCount", user.getRoleSwitchCount()
+            ));
+        }
+
         String currentRole = user.getRole() != null ? user.getRole().trim().toUpperCase() : "USER";
         if ("RECRUITER".equals(currentRole)) currentRole = "HR";
 
@@ -301,6 +312,7 @@ public class SettingsApiController {
         if ("RECRUITER".equals(targetRole)) targetRole = "HR";
 
         user.setRole(targetRole);
+        user.setRoleSwitchCount(user.getRoleSwitchCount() + 1);
         if ("HR".equals(targetRole)) {
             user.setCareerRole("HR / Recruiter");
         } else {

@@ -91,13 +91,14 @@ export class NotificationSocket {
           try {
             const splitIdx = data.indexOf('\n\n');
             if (splitIdx !== -1) {
+              const headerPart = data.substring(0, splitIdx);
               let body = data.substring(splitIdx + 2);
               if (body.endsWith('\0')) {
                 body = body.substring(0, body.length - 1);
               }
               const parsed = JSON.parse(body);
 
-              // 1. Dispatch global custom DOM event for all active pages
+              // 1. Dispatch global custom DOM event for all active pages (data synchronization)
               window.dispatchEvent(
                 new CustomEvent('smarthire:sync', { detail: parsed })
               );
@@ -109,9 +110,18 @@ export class NotificationSocket {
                 } catch (_) {}
               }
 
-              // 3. Dispatch to NotificationContext if it is a notification item
-              if (this.onNotification && (parsed.title || parsed.id || parsed.message)) {
-                this.onNotification(parsed);
+              // 3. Dispatch to NotificationContext ONLY if it is an actual user notification
+              // Raw recruitment pipeline sync events (e.g. CANDIDATE_ARCHIVED, RESUME_DELETED) are NOT user notifications!
+              const isRecruitmentSyncEvent = headerPart.includes('/topic/recruitment') || Boolean(parsed.event);
+              const hasValidContent = Boolean(parsed.title && String(parsed.title).trim()) &&
+                                      Boolean(parsed.message && String(parsed.message).trim());
+              const targetEmail = (parsed.userEmail || parsed.recipientEmail || '').trim().toLowerCase();
+
+              if (this.onNotification && !isRecruitmentSyncEvent && hasValidContent) {
+                // Strict user-isolation: only dispatch if targetEmail explicitly matches logged-in user
+                if (targetEmail && this.userEmail && targetEmail === this.userEmail) {
+                  this.onNotification(parsed);
+                }
               }
             }
           } catch (e) {

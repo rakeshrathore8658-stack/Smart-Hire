@@ -16,6 +16,32 @@ const CustomSelect = ({
   const [searchQuery, setSearchQuery] = useState('');
   const wrapperRef = useRef(null);
   const searchInputRef = useRef(null);
+  const hoverTimeoutRef = useRef(null);
+
+  const handleMouseEnter = () => {
+    if (disabled) return;
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+    setIsOpen(true);
+  };
+
+  const handleMouseLeave = () => {
+    if (disabled) return;
+    hoverTimeoutRef.current = setTimeout(() => {
+      setIsOpen(false);
+      setSearchQuery('');
+    }, 240);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (hoverTimeoutRef.current) {
+        clearTimeout(hoverTimeoutRef.current);
+      }
+    };
+  }, []);
 
   // Normalize options into { value, label, badge, icon, isHeader } objects
   const normalizedOptions = options.map((opt, idx) => {
@@ -35,6 +61,7 @@ const CustomSelect = ({
       badge: opt.badge,
       icon: opt.icon,
       disabled: opt.disabled,
+      onDelete: opt.onDelete,
     };
   });
 
@@ -97,6 +124,8 @@ const CustomSelect = ({
       ref={wrapperRef}
       className={`custom-select-container ${size} ${className} ${disabled ? 'disabled' : ''} ${isOpen ? 'is-open' : ''}`}
       id={id ? `${id}-container` : undefined}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
     >
       {/* Select Trigger */}
       <button
@@ -175,13 +204,53 @@ const CustomSelect = ({
                     aria-selected={isSelected}
                     onClick={(e) => !opt.disabled && handleSelect(opt.value, e)}
                   >
-                    <div className="custom-select-option-label">
+                    <div className="custom-select-option-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', flex: 1 }}>
                       {opt.icon && <span className="opt-icon">{opt.icon}</span>}
                       <span>{opt.label}</span>
                       {opt.badge && (
                         <span className="custom-select-badge">{opt.badge}</span>
                       )}
                     </div>
+                    {opt.onDelete && (
+                      <button
+                        type="button"
+                        className="custom-select-delete-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          opt.onDelete(opt.value);
+                        }}
+                        title={`Delete field '${opt.label}'`}
+                        style={{
+                          background: 'rgba(239, 68, 68, 0.08)',
+                          border: '1px solid rgba(239, 68, 68, 0.25)',
+                          color: '#ef4444',
+                          cursor: 'pointer',
+                          padding: '3px 7px',
+                          fontSize: '0.82rem',
+                          borderRadius: '5px',
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          marginLeft: '8px',
+                          marginRight: isSelected ? '4px' : '0',
+                          opacity: 0.9,
+                          transition: 'all 0.15s ease',
+                          flexShrink: 0,
+                        }}
+                        onMouseEnter={(e) => {
+                          e.currentTarget.style.background = '#ef4444';
+                          e.currentTarget.style.color = '#ffffff';
+                          e.currentTarget.style.borderColor = '#ef4444';
+                        }}
+                        onMouseLeave={(e) => {
+                          e.currentTarget.style.background = 'rgba(239, 68, 68, 0.08)';
+                          e.currentTarget.style.color = '#ef4444';
+                          e.currentTarget.style.borderColor = 'rgba(239, 68, 68, 0.25)';
+                        }}
+                      >
+                        <i className="bi bi-trash3" style={{ fontSize: '0.82rem' }}></i>
+                      </button>
+                    )}
                     {isSelected && (
                       <span className="custom-select-checkmark">
                         <i className="bi bi-check2"></i>

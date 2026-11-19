@@ -41,4 +41,10 @@ public interface JobRepository extends JpaRepository<Job, Long> {
 
     @Query("SELECT DISTINCT j.department FROM Job j WHERE j.department IS NOT NULL AND TRIM(j.department) != '' ORDER BY j.department ASC")
     List<String> findDistinctDepartments();
+
+    @Query("SELECT j FROM Job j WHERE j.recruiter.id = :recruiterId AND LOWER(j.department) = LOWER(:department)")
+    List<Job> findByRecruiterIdAndDepartmentIgnoreCase(@Param("recruiterId") Long recruiterId, @Param("department") String department);
+
+    @Query("SELECT DISTINCT j.department FROM Job j WHERE j.recruiter.id = :recruiterId AND j.department IS NOT NULL AND TRIM(j.department) != '' ORDER BY j.department ASC")
+    List<String> findDistinctDepartmentsByRecruiterId(@Param("recruiterId") Long recruiterId);
 }

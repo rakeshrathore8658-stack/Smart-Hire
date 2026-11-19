@@ -20,7 +20,7 @@ const NotificationDetailModal = ({ notification, onClose }) => {
   const formattedDateTime = `${timeInfo.exact} (${timeInfo.relative})`;
 
   const candidateName = notification.candidateName || 'Candidate';
-  const jobTitle = notification.jobTitle || notification.title?.split(':')?.[1]?.trim() || 'Software Engineer';
+  const jobTitle = notification.jobTitle || notification.targetJobRole || notification.title?.split(':')?.[1]?.trim() || 'Software Engineer';
   const applicationId = notification.relatedEntityId ? `#APP-${notification.relatedEntityId}` : `#NOTIF-${notification.id}`;
   const previousStatus = notification.previousStatus || (display.heading === 'Removed from Shortlist' ? 'SHORTLISTED' : 'Under Review');
   const currentStatus = notification.currentStatus || display.badge.text;
@@ -122,22 +122,26 @@ const NotificationDetailModal = ({ notification, onClose }) => {
         {/* Modal Body */}
         <div style={{ padding: '24px' }}>
           {/* Official Notification Message Banner */}
-          <div
-            style={{
-              padding: '16px',
-              borderRadius: '10px',
-              background: 'rgba(255, 121, 0, 0.05)',
-              borderLeft: '4px solid var(--accent, #ff7900)',
-              marginBottom: '22px',
-            }}
-          >
-            <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)', display: 'block', marginBottom: '6px', fontWeight: 700 }}>
-              {display.title}
-            </strong>
-            <p style={{ margin: 0, fontSize: '0.92rem', color: 'var(--text-secondary, #334155)', lineHeight: 1.55 }}>
-              {display.message}
-            </p>
-          </div>
+          {(display.title || display.message || notification.message || notification.title) && (
+            <div
+              style={{
+                padding: '16px',
+                borderRadius: '10px',
+                background: 'rgba(255, 121, 0, 0.05)',
+                borderLeft: '4px solid var(--accent, #ff7900)',
+                marginBottom: '22px',
+              }}
+            >
+              {(display.title || notification.title) && (
+                <strong style={{ fontSize: '0.88rem', color: 'var(--text-primary)', display: 'block', marginBottom: '6px', fontWeight: 700 }}>
+                  {display.title || notification.title}
+                </strong>
+              )}
+              <p style={{ margin: 0, fontSize: '0.92rem', color: 'var(--text-secondary, #334155)', lineHeight: 1.55 }}>
+                {display.message || notification.message}
+              </p>
+            </div>
+          )}
 
           {/* Key Attributes Data Grid */}
           <div
@@ -166,7 +170,9 @@ const NotificationDetailModal = ({ notification, onClose }) => {
               <small style={{ color: 'var(--text-muted)', display: 'block', fontSize: '0.75rem', textTransform: 'uppercase', fontWeight: 600 }}>
                 Candidate Email
               </small>
-              <span style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>{notification.userEmail}</span>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '0.88rem' }}>
+                {notification.userEmail || notification.candidateEmail || 'Not Provided'}
+              </span>
             </div>
 
             <div style={{ padding: '12px 14px', borderRadius: '8px', background: 'var(--bg-secondary, #f8fafc)' }}>

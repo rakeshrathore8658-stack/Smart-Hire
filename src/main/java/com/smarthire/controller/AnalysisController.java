@@ -2,7 +2,9 @@ package com.smarthire.controller;
 
 import com.smarthire.dto.ATSAnalysisDTO;
 import com.smarthire.dto.CandidateInfoDTO;
+import com.smarthire.dto.JobQuestionDTO;
 import com.smarthire.dto.ResumeAnalyzeRequestDTO;
+import com.smarthire.entity.Job;
 import com.smarthire.entity.Resume;
 import com.smarthire.entity.ResumeAnalysis;
 import com.smarthire.entity.User;
@@ -10,6 +12,7 @@ import com.smarthire.repository.ResumeAnalysisRepository;
 import com.smarthire.repository.ResumeRepository;
 import com.smarthire.repository.UserRepository;
 import com.smarthire.service.CandidateNormalizationUtils;
+import com.smarthire.service.FileStorageService;
 import com.smarthire.service.ResumeAnalysisService;
 import com.smarthire.service.ResumeExtractionService;
 import com.smarthire.service.ResumeNormalizationService;
@@ -27,6 +30,7 @@ import org.springframework.web.context.request.RequestContextHolder;
 import org.springframework.web.context.request.ServletRequestAttributes;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -46,6 +50,9 @@ public class AnalysisController {
     private final UserRepository userRepository;
     private final com.smarthire.service.RealtimeSyncService realtimeSyncService;
     private final com.smarthire.service.NotificationService notificationService;
+    private final com.smarthire.service.FileStorageService fileStorageService;
+    private final com.smarthire.service.JobScreeningService jobScreeningService;
+    private final com.smarthire.repository.JobRepository jobRepository;
 
     private User getAuthenticatedUser() {
         return resolveUser(null, null);
@@ -148,6 +155,7 @@ public class AnalysisController {
             @RequestParam(value = "resumeFile", required = false) MultipartFile resumeFile,
             @RequestParam(value = "file", required = false) MultipartFile file,
             @RequestParam(value = "resumeId", required = false) Long resumeId,
+            @RequestParam(value = "jobId", required = false) Long jobId,
             @RequestParam(value = "jobRole", required = false) String jobRole,
             @RequestParam(value = "targetJobRole", required = false) String targetJobRole,
             @RequestParam(value = "customJobRole", required = false) String customJobRole,
@@ -155,6 +163,7 @@ public class AnalysisController {
             @RequestParam(value = "aiProvider", required = false) String aiProvider,
             @RequestParam(value = "model", required = false) String model,
             @RequestParam(value = "geminiApiKey", required = false) String geminiApiKey,
+            @RequestParam(value = "source", required = false) String sourceParam,
             @RequestParam(value = "email", required = false) String emailParam,
             @RequestHeader(value = "X-User-Email", required = false) String headerEmail
     ) {
@@ -166,6 +175,7 @@ public class AnalysisController {
         }
 
         Long targetResumeId = resumeId;
+        Resume resumeToSave = null;
 
         // If file is supplied, parse, normalize, extract, and persist resume
         if (uploadFile != null && !uploadFile.isEmpty()) {
@@ -266,7 +276,6 @@ public class AnalysisController {
                     return ResponseEntity.ok(cachedDto);
                 }
 
-                Resume resumeToSave;
                 if (existingResumeOpt.isPresent()) {
                     resumeToSave = existingResumeOpt.get();
                     resumeToSave.setFileName(uploadFile.getOriginalFilename());
@@ -309,11 +318,21 @@ public class AnalysisController {
 
                 // If candidate email matches a registered Job Seeker, also link user_id
                 if (normEmail != null) {
-                    userRepository.findByEmail(normEmail).ifPresent(candUser -> {
-                        if (resumeToSave.getUser() == null) {
-                            resumeToSave.setUser(candUser);
-                        }
-                    });
+                    Optional<User> candUserOpt = userRepository.findByEmail(normEmail);
+                    if (candUserOpt.isPresent() && resumeToSave.getUser() == null) {
+                        resumeToSave.setUser(candUserOpt.get());
+                    }
+                }
+
+                // Upload resume binary to Cloudinary centralized file storage
+                try {
+                    FileStorageService.UploadResult uploadResult = fileStorageService.uploadResumeFile(uploadFile);
+                    if (uploadResult != null && uploadResult.getSecureUrl() != null) {
+                        resumeToSave.setResumeUrl(uploadResult.getSecureUrl());
+                        resumeToSave.setResumePublicId(uploadResult.getPublicId());
+                    }
+                } catch (Exception cloudEx) {
+                    log.warn("Cloudinary upload issue during resume analysis: {}", cloudEx.getMessage());
                 }
 
                 Resume savedResume = resumeRepository.save(resumeToSave);
@@ -337,6 +356,10 @@ public class AnalysisController {
             ));
         }
 
+        if (resumeToSave == null) {
+            resumeToSave = resumeRepository.findById(targetResumeId).orElse(null);
+        }
+
         try {
             User currentUser = resolveUser(emailParam, headerEmail);
 
@@ -352,6 +375,91 @@ public class AnalysisController {
             result.setDuplicateDetected(false);
             result.setContentModified(true);
             result.setDifferenceSummary("Resume modifications detected and evaluated successfully.");
+
+            // ATS Score & Screening Threshold Evaluation (>= 60.0% qualifies)
+            double atsScore = result.getOverallScore();
+            result.setAtsScore(atsScore);
+            result.setApplicationId(result.getId());
+            result.setSuccess(true);
+            if (resumeToSave != null) {
+                result.setResumeUrl(resumeToSave.getResumeUrl());
+            }
+
+            // Associate with matching Job
+            Job matchedJob = null;
+            if (jobId != null) {
+                matchedJob = jobRepository.findById(jobId).orElse(null);
+            }
+            if (matchedJob == null && effectiveRole != null && !effectiveRole.isBlank()) {
+                String roleToMatch = effectiveRole.trim();
+                matchedJob = jobRepository.findAll().stream()
+                        .filter(j -> j.getTitle() != null && j.getTitle().equalsIgnoreCase(roleToMatch))
+                        .findFirst()
+                        .orElse(null);
+            }
+
+            // Check if matchedJob has screeningEnabled (toggle on/off) and custom atsThreshold
+            boolean screeningActiveForJob = false;
+            int effectiveThreshold = 60;
+            if (matchedJob != null) {
+                screeningActiveForJob = Boolean.TRUE.equals(matchedJob.getScreeningEnabled());
+                if (matchedJob.getAtsThreshold() != null && matchedJob.getAtsThreshold() > 0) {
+                    effectiveThreshold = matchedJob.getAtsThreshold();
+                }
+            }
+
+            boolean isHrUser = currentUser != null && ("HR".equalsIgnoreCase(currentUser.getRole()) || "RECRUITER".equalsIgnoreCase(currentUser.getRole()));
+            boolean isHrScan = isHrUser;
+            if ("JOB_SEEKER".equalsIgnoreCase(sourceParam)) {
+                isHrScan = false;
+            } else if ("HR_SCAN".equalsIgnoreCase(sourceParam)) {
+                isHrScan = true;
+            }
+            String effectiveSource = isHrScan ? "HR_SCAN" : "JOB_SEEKER";
+            result.setApplicationSource(effectiveSource);
+            result.setSourceLabel(isHrScan ? "HR Recruiter Scan" : "Job Seeker Portal");
+
+            boolean requiresScreeningForm = !isHrScan && screeningActiveForJob && (atsScore >= effectiveThreshold);
+            result.setEligibleForScreening(requiresScreeningForm);
+            result.setAtsThreshold(effectiveThreshold);
+
+            if (requiresScreeningForm && matchedJob != null) {
+                List<JobQuestionDTO> questions = jobScreeningService.getQuestionsForJob(matchedJob.getId());
+                result.setScreeningRequired(!questions.isEmpty());
+                result.setScreeningJobId(matchedJob.getId());
+                result.setScreeningQuestions(questions);
+                result.setMessage("Congratulations! Your ATS score of " + atsScore + "% qualifies for pre-screening.");
+            } else {
+                result.setScreeningRequired(false);
+                result.setScreeningQuestions(Collections.emptyList());
+                if (screeningActiveForJob) {
+                    result.setMessage("Your ATS score is below the required " + effectiveThreshold + "% threshold.");
+                } else {
+                    result.setMessage("Resume analysis completed successfully.");
+                }
+            }
+
+            // Update ResumeAnalysis entity with Job and Cloudinary Resume URL
+            try {
+                Optional<ResumeAnalysis> analysisEntityOpt = resumeAnalysisRepository.findById(result.getId());
+                if (analysisEntityOpt.isPresent()) {
+                    ResumeAnalysis entity = analysisEntityOpt.get();
+                    entity.setApplicationSource(effectiveSource);
+                    if (matchedJob != null) {
+                        entity.setJob(matchedJob);
+                    }
+                    if (resumeToSave != null && resumeToSave.getResumeUrl() != null) {
+                        entity.setResumeUrl(resumeToSave.getResumeUrl());
+                        entity.setResumePublicId(resumeToSave.getResumePublicId());
+                    }
+                    if (requiresScreeningForm && matchedJob != null && !jobScreeningService.getQuestionsForJob(matchedJob.getId()).isEmpty()) {
+                        entity.setStage("Screening Pending");
+                    }
+                    resumeAnalysisRepository.save(entity);
+                }
+            } catch (Exception ex) {
+                log.warn("Failed to update ResumeAnalysis entity details: {}", ex.getMessage());
+            }
 
             // 1. Real-time WebSocket sync broadcast for HR Dashboard only
             try {
@@ -532,17 +640,26 @@ public class AnalysisController {
 
             if (isHr) {
                 String candidateTargetEmail = null;
-                if (analysis.getUser() != null && analysis.getUser().getEmail() != null) {
-                    candidateTargetEmail = analysis.getUser().getEmail();
-                } else if (resume != null && resume.getUser() != null && resume.getUser().getEmail() != null) {
-                    candidateTargetEmail = resume.getUser().getEmail();
-                } else if (analysis.getCandidateEmailNormalized() != null && !analysis.getCandidateEmailNormalized().isBlank()) {
-                    candidateTargetEmail = analysis.getCandidateEmailNormalized();
-                } else if (analysis.getCandidateEmail() != null && !analysis.getCandidateEmail().isBlank()) {
-                    candidateTargetEmail = analysis.getCandidateEmail();
+                boolean isHrScanResume = "HR_SCAN".equalsIgnoreCase(analysis.getEffectiveApplicationSource());
+
+                // Never send candidate notification for HR test scans / internal HR uploads
+                if (!isHrScanResume) {
+                    if (analysis.getUser() != null && analysis.getUser().getEmail() != null) {
+                        candidateTargetEmail = analysis.getUser().getEmail();
+                    } else if (resume != null && resume.getUser() != null && resume.getUser().getEmail() != null) {
+                        candidateTargetEmail = resume.getUser().getEmail();
+                    } else if (analysis.getCandidateEmailNormalized() != null && !analysis.getCandidateEmailNormalized().isBlank()) {
+                        candidateTargetEmail = analysis.getCandidateEmailNormalized();
+                    } else if (analysis.getCandidateEmail() != null && !analysis.getCandidateEmail().isBlank()) {
+                        candidateTargetEmail = analysis.getCandidateEmail();
+                    }
                 }
 
-                if (candidateTargetEmail != null && !candidateTargetEmail.isBlank()) {
+                // HR must never receive a candidate notification for actions they performed themselves
+                boolean isHrSelfAction = currentUser != null && currentUser.getEmail() != null
+                        && candidateTargetEmail != null && candidateTargetEmail.equalsIgnoreCase(currentUser.getEmail());
+
+                if (!isHrScanResume && !isHrSelfAction && candidateTargetEmail != null && !candidateTargetEmail.isBlank()) {
                     String dynamicMsg = "Hello " + candName + ", your application for '" + role + "' has been removed from active recruitment review by HR Recruiter " + hrName + " and placed in recently deleted. If you have questions regarding your application, please reach out to our recruitment team.";
                     try {
                         notificationService.sendEnrichedNotification(
@@ -569,6 +686,9 @@ public class AnalysisController {
                     } catch (Exception notifEx) {
                         log.warn("Failed to dispatch deletion notification to candidate: {}", notifEx.getMessage());
                     }
+                } else {
+                    log.info("Suppressed candidate notification for deletion in AnalysisController: isHrScan={}, isHrSelfAction={}, candidateEmail={}",
+                            isHrScanResume, isHrSelfAction, candidateTargetEmail);
                 }
 
                 log.info("Moving ResumeAnalysis record [id={}] for [{}] - [{}] to Recently Deleted by HR [{}]", id, candName, role, hrName);

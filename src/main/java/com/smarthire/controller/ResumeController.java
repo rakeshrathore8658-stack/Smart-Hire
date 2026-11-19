@@ -25,7 +25,7 @@ import java.util.Map;
 import java.util.Optional;
 
 @RestController
-@RequestMapping({"/api/resume", "/api/resumes"})
+@RequestMapping("/api/resume")
 @RequiredArgsConstructor
 @Slf4j
 public class ResumeController {
