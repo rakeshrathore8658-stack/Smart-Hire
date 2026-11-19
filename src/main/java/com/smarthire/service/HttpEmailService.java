@@ -46,6 +46,13 @@ public class HttpEmailService {
         }
 
         try {
+            String cleanApiKey = apiKey.trim()
+                    .replaceAll("^\"|\"$", "")
+                    .replaceAll("^'|'$", "")
+                    .replaceAll("(?i)^api[-_]?key:\\s*", "")
+                    .replaceAll("\\s+", "")
+                    .trim();
+
             Map<String, Object> payload = new LinkedHashMap<>();
             payload.put("sender", Map.of(
                     "name", (senderName != null && !senderName.isBlank()) ? senderName.trim() : "SmartHire Recruiter",
@@ -63,7 +70,7 @@ public class HttpEmailService {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create("https://api.brevo.com/v3/smtp/email"))
                     .timeout(Duration.ofSeconds(15))
-                    .header("api-key", apiKey.trim())
+                    .header("api-key", cleanApiKey)
                     .header("Content-Type", "application/json")
                     .header("Accept", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(jsonPayload, StandardCharsets.UTF_8))
@@ -76,13 +83,14 @@ public class HttpEmailService {
                 log.info("Brevo HTTP API: Email successfully delivered to [{}] (Status: {})", recipientEmail, status);
                 return true;
             } else {
-                log.error("Brevo HTTP API delivery failed (Status {}): {}", status, response.body());
+                String body = response.body() != null ? response.body() : "";
+                log.error("Brevo HTTP API delivery failed (Status {}): {}", status, body);
                 if (status == 401) {
-                    throw new RuntimeException("Brevo API key is invalid or unauthorized. Please verify your Brevo API key.");
-                } else if (status == 400 && response.body() != null && response.body().contains("sender")) {
+                    throw new RuntimeException("Brevo API key is invalid or unauthorized. Please ensure you copied the key from the 'API Keys' tab (NOT 'SMTP' tab) at https://app.brevo.com/settings/keys/api and that your Brevo account email is verified.");
+                } else if (status == 400 && body.contains("sender")) {
                     throw new RuntimeException("Brevo rejected sender email '" + senderEmail + "'. Please add and verify this email address under 'Senders' in your Brevo dashboard.");
                 } else {
-                    throw new RuntimeException("Brevo email failed (" + status + "): " + response.body());
+                    throw new RuntimeException("Brevo email failed (" + status + "): " + body);
                 }
             }
         } catch (RuntimeException ex) {
