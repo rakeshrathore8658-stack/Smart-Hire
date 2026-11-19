@@ -83,10 +83,10 @@ public class HttpEmailService {
                 log.info("Brevo HTTP API: Email successfully delivered to [{}] (Status: {})", recipientEmail, status);
                 return true;
             } else {
-                String body = response.body() != null ? response.body() : "";
+                String body = response.body() != null ? response.body().trim() : "";
                 log.error("Brevo HTTP API delivery failed (Status {}): {}", status, body);
                 if (status == 401) {
-                    throw new RuntimeException("Brevo API key is invalid or unauthorized. Please ensure you copied the key from the 'API Keys' tab (NOT 'SMTP' tab) at https://app.brevo.com/settings/keys/api and that your Brevo account email is verified.");
+                    throw new RuntimeException("Brevo API Key rejected (HTTP 401 Unauthorized): " + (body.isEmpty() ? "Key not recognized by Brevo." : body) + " — Please ensure you copied the key from Brevo ➔ 'API Keys' tab (starts with xkeysib-) and that your account is active.");
                 } else if (status == 400 && body.contains("sender")) {
                     throw new RuntimeException("Brevo rejected sender email '" + senderEmail + "'. Please add and verify this email address under 'Senders' in your Brevo dashboard.");
                 } else {

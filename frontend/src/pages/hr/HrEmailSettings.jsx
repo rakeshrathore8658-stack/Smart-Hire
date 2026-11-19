@@ -139,8 +139,11 @@ export default function HrEmailSettings() {
       setAlert({ type: 'danger', message: 'Please paste your Brevo API key before saving.' });
       return;
     }
-    if (cleanKey.length < 15) {
-      setAlert({ type: 'danger', message: 'Brevo API keys are longer than 15 characters (usually starts with xkeysib-). Please copy the key from your Brevo dashboard.' });
+    if (cleanKey.length < 35) {
+      setAlert({
+        type: 'danger',
+        message: `Brevo API Key must be around 70 characters long (starts with 'xkeysib-'). You only entered ${cleanKey.length} characters. Please generate the key in Brevo and copy the full key.`,
+      });
       return;
     }
 
