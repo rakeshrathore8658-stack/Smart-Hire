@@ -248,7 +248,7 @@ public class SystemEmailService {
                           </div>
 
                           <div style="border-top: 1px solid #e2e8f0; padding-top: 18px; color: #94a3b8; font-size: 12px; line-height: 1.5;">
-                            🔒 <strong>This link is valid for 1 hour.</strong> If you did not request a password reset, no action is needed — your account remains safe and protected.
+                            ⏱️ <strong>This secure reset link is valid for 30 minutes and can only be used once.</strong> Once your password is updated, this link is immediately deactivated. If you did not request a password reset, no action is needed — your account remains safe and protected.
                           </div>
                         </td>
                       </tr>

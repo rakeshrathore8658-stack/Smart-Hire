@@ -26,9 +26,10 @@ export default function ForgotPassword() {
       const res = await api.post('/auth/forgot-password', { email: cleanEmail });
       setEmailSent(true);
       setSuccessMessage(
-        res.data?.message || 'If an account exists with this email address, a password reset link has been sent to your inbox.'
+        res.data?.message || 'A password reset link has been sent to your email address (valid for 30 minutes).'
       );
     } catch (err) {
+      setEmailSent(false);
       setErrorMessage(
         err.response?.data?.message || err.message || 'Unable to send password reset link. Please check your email and try again.'
       );
@@ -139,7 +140,7 @@ export default function ForgotPassword() {
                   color: 'var(--text-muted)',
                 }}
               >
-                ⏱️ <strong>Note:</strong> The link will expire in 1 hour. Be sure to check your spam or promotions folder if you don't see it in a few minutes.
+                ⏱️ <strong>Note:</strong> This link is valid for <strong>30 minutes</strong> and can only be used once. Check your spam or promotions folder if you don't see it within 2 minutes.
               </div>
               <Link
                 to="/login"

@@ -136,6 +136,8 @@ public class AuthService {
         );
     }
 
+    public record TokenValidationResult(boolean isValid, String reason, String email, String message) {}
+
     /**
      * Finds a user by email address.
      */
@@ -333,22 +335,67 @@ public class AuthService {
 
     /**
      * Generates password reset token and sends email.
+     * Enforces a strict 30-minute validity window.
      */
     @Transactional
     public boolean initiatePasswordReset(String email) {
         if (email == null || email.isBlank()) return false;
         Optional<User> userOpt = findByEmail(email.trim().toLowerCase());
-        if (userOpt.isEmpty()) return false;
+        if (userOpt.isEmpty()) {
+            log.warn("Forgot password requested for unregistered email: [{}]", email);
+            return false;
+        }
         User user = userOpt.get();
         String token = java.util.UUID.randomUUID().toString();
         user.setResetPasswordToken(token);
-        user.setResetPasswordTokenExpiry(java.time.LocalDateTime.now().plusHours(1));
-        userRepository.save(user);
+        // Strict 30-minute expiration window in UTC
+        user.setResetPasswordTokenExpiry(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).plusMinutes(30));
+        userRepository.saveAndFlush(user);
         return systemEmailService.sendPasswordResetEmail(user, token);
     }
 
     /**
+     * Validates whether a reset password token is valid, active (< 30 minutes), and has not been used.
+     * Cleans up expired tokens automatically.
+     */
+    @Transactional
+    public TokenValidationResult validateResetPasswordToken(String token) {
+        if (token == null || token.isBlank()) {
+            return new TokenValidationResult(false, "MISSING_TOKEN", null, "Password reset token is missing.");
+        }
+        Optional<User> userOpt = userRepository.findByResetPasswordToken(token.trim());
+        if (userOpt.isEmpty()) {
+            return new TokenValidationResult(
+                    false,
+                    "INVALID_OR_USED",
+                    null,
+                    "This password reset link is invalid or has already been used. Please request a new link."
+            );
+        }
+        User user = userOpt.get();
+        java.time.LocalDateTime expiry = user.getResetPasswordTokenExpiry();
+        java.time.LocalDateTime nowUtc = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC);
+
+        if (expiry != null && expiry.isBefore(nowUtc)) {
+            // Token has expired: clean it up from database immediately
+            log.warn("Password reset token expired for user [{}] (expired at {}, current UTC {})",
+                    user.getEmail(), expiry, nowUtc);
+            user.setResetPasswordToken(null);
+            user.setResetPasswordTokenExpiry(null);
+            userRepository.saveAndFlush(user);
+            return new TokenValidationResult(
+                    false,
+                    "EXPIRED",
+                    null,
+                    "This password reset link has expired (links are valid for 30 minutes). Please request a new link."
+            );
+        }
+        return new TokenValidationResult(true, "VALID", user.getEmail(), "Token is valid.");
+    }
+
+    /**
      * Resets password using token.
+     * Permanently invalidates the token so it cannot be reopened or reused.
      */
     @Transactional
     public boolean resetPasswordWithToken(String token, String newPassword) {
@@ -356,15 +403,22 @@ public class AuthService {
         Optional<User> userOpt = userRepository.findByResetPasswordToken(token.trim());
         if (userOpt.isEmpty()) return false;
         User user = userOpt.get();
-        if (user.getResetPasswordTokenExpiry() != null && user.getResetPasswordTokenExpiry().isBefore(java.time.LocalDateTime.now())) {
-            log.warn("Password reset token expired for user [{}]", user.getEmail());
+        java.time.LocalDateTime expiry = user.getResetPasswordTokenExpiry();
+        java.time.LocalDateTime nowUtc = java.time.LocalDateTime.now(java.time.ZoneOffset.UTC);
+
+        if (expiry != null && expiry.isBefore(nowUtc)) {
+            log.warn("Attempted password reset with expired token for user [{}]", user.getEmail());
+            user.setResetPasswordToken(null);
+            user.setResetPasswordTokenExpiry(null);
+            userRepository.saveAndFlush(user);
             return false;
         }
         user.setPasswordHash(passwordEncoder.encode(newPassword));
+        // Single-use token: Immediately invalidate so the link CANNOT be opened or used again
         user.setResetPasswordToken(null);
         user.setResetPasswordTokenExpiry(null);
-        userRepository.save(user);
-        log.info("Password successfully updated via reset token for user [{}]", user.getEmail());
+        userRepository.saveAndFlush(user);
+        log.info("Password successfully updated and reset token permanently invalidated for user [{}]", user.getEmail());
         return true;
     }
 

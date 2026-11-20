@@ -390,8 +390,41 @@ public class AuthApiController {
     }
 
     /**
+     * GET /api/auth/validate-reset-token?token=...
+     * Pre-validates the reset token on page load to prevent opening the form if expired or already used.
+     */
+    @GetMapping("/validate-reset-token")
+    public ResponseEntity<?> validateResetToken(@RequestParam(value = "token", required = false) String token) {
+        if (token == null || token.isBlank()) {
+            return ResponseEntity.badRequest().body(Map.of(
+                    "valid", false,
+                    "reason", "MISSING_TOKEN",
+                    "message", "Password reset token is missing."
+            ));
+        }
+
+        AuthService.TokenValidationResult result = authService.validateResetPasswordToken(token.trim());
+        if (!result.isValid()) {
+            HttpStatus status = "EXPIRED".equals(result.reason()) ? HttpStatus.GONE : HttpStatus.NOT_FOUND;
+            return ResponseEntity.status(status).body(Map.of(
+                    "valid", false,
+                    "reason", result.reason(),
+                    "message", result.message()
+            ));
+        }
+
+        return ResponseEntity.ok(Map.of(
+                "valid", true,
+                "reason", "VALID",
+                "email", maskEmail(result.email()),
+                "message", "Token is valid. You may reset your password."
+        ));
+    }
+
+    /**
      * POST /api/auth/forgot-password
      * Generates a password reset link and emails it to the user.
+     * Enforces strict account existence check: Unregistered accounts are rejected with 404.
      */
     @PostMapping("/forgot-password")
     public ResponseEntity<?> forgotPassword(@RequestBody Map<String, String> body) {
@@ -410,17 +443,36 @@ public class AuthApiController {
             if (reset) {
                 return ResponseEntity.ok(Map.of("success", true, "message", "Password updated successfully. You can now login with your new password."));
             } else {
-                return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Reset link is invalid or has expired (1 hour). Please request a new link."));
+                return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Reset link is invalid, has expired (30 minutes limit), or has already been used. Please request a new link."));
             }
         }
 
         // Case 2: Only email provided -> sending reset link via email
         if (email != null && !email.isBlank() && (newPassword == null || newPassword.isBlank())) {
-            authService.initiatePasswordReset(email.trim().toLowerCase());
-            return ResponseEntity.ok(Map.of(
-                    "success", true,
-                    "message", "If an account with this email address exists, a password reset link has been sent to your inbox."
-            ));
+            String cleanEmail = email.trim().toLowerCase();
+            Optional<User> userOpt = authService.findByEmail(cleanEmail);
+            if (userOpt.isEmpty()) {
+                log.warn("Forgot password requested for unregistered email: [{}]", cleanEmail);
+                return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                        "success", false,
+                        "registered", false,
+                        "message", "No account registered with this email address (" + cleanEmail + "). Please check your email or register a new account."
+                ));
+            }
+
+            boolean sent = authService.initiatePasswordReset(cleanEmail);
+            if (sent) {
+                return ResponseEntity.ok(Map.of(
+                        "success", true,
+                        "registered", true,
+                        "message", "A password reset link has been sent to " + cleanEmail + ". Please check your inbox (valid for 30 minutes)."
+                ));
+            } else {
+                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                        "success", false,
+                        "message", "Failed to deliver reset email. Please ensure system email configuration is active or try again later."
+                ));
+            }
         }
 
         // Case 3: Legacy direct reset fallback
@@ -444,7 +496,7 @@ public class AuthApiController {
 
     /**
      * POST /api/auth/reset-password
-     * Resets password using the secure email token.
+     * Resets password using the secure email token and permanently invalidates it.
      */
     @PostMapping("/reset-password")
     public ResponseEntity<?> resetPassword(@RequestBody Map<String, String> body) {
@@ -467,7 +519,18 @@ public class AuthApiController {
         if (reset) {
             return ResponseEntity.ok(Map.of("success", true, "message", "Password reset successfully! You can now log in with your new password."));
         } else {
-            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Password reset link is invalid or has expired (1 hour). Please request a new link."));
+            return ResponseEntity.badRequest().body(Map.of("success", false, "message", "Password reset link is invalid, has expired (30 minutes limit), or has already been used. Please request a new link."));
         }
+    }
+
+    private String maskEmail(String email) {
+        if (email == null || !email.contains("@")) return email;
+        String[] parts = email.split("@", 2);
+        String name = parts[0];
+        String domain = parts[1];
+        if (name.length() <= 2) {
+            return name.charAt(0) + "***@" + domain;
+        }
+        return name.charAt(0) + "***" + name.charAt(name.length() - 1) + "@" + domain;
     }
 }
