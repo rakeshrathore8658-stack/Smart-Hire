@@ -48,7 +48,7 @@ public class PasswordResetSecurityTest {
         jwtUtil = Mockito.mock(JwtUtil.class);
 
         authService = new AuthService(userRepository, passwordEncoder, systemEmailService);
-        authApiController = new AuthApiController(authService, userRepository, jwtUtil);
+        authApiController = new AuthApiController(authService, userRepository, jwtUtil, systemEmailService);
 
         testUser = new User();
         testUser.setId(101L);
@@ -84,7 +84,8 @@ public class PasswordResetSecurityTest {
     void testRegisteredUserGenerates30MinToken() {
         when(userRepository.findByEmail(testEmail)).thenReturn(Optional.of(testUser));
         when(userRepository.saveAndFlush(any())).thenAnswer(invocation -> invocation.getArgument(0));
-        when(systemEmailService.sendPasswordResetEmail(any(), any())).thenReturn(true);
+        when(systemEmailService.sendPasswordResetEmail(any(), any()))
+                .thenReturn(new SystemEmailService.EmailSendResult(true, "Delivered"));
 
         ResponseEntity<?> response = authApiController.forgotPassword(Map.of("email", testEmail));
 

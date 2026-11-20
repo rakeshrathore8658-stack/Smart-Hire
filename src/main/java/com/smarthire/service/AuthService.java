@@ -318,18 +318,22 @@ public class AuthService {
      * Resends email verification link for unverified users.
      */
     @Transactional
-    public boolean resendVerificationEmail(String email) {
-        if (email == null || email.isBlank()) return false;
+    public SystemEmailService.EmailSendResult resendVerificationEmail(String email) {
+        if (email == null || email.isBlank()) {
+            return new SystemEmailService.EmailSendResult(false, "Email address is required.");
+        }
         Optional<User> userOpt = findByEmail(email.trim().toLowerCase());
-        if (userOpt.isEmpty()) return false;
+        if (userOpt.isEmpty()) {
+            return new SystemEmailService.EmailSendResult(false, "No account registered with " + email.trim());
+        }
         User user = userOpt.get();
         if (Boolean.TRUE.equals(user.getEmailVerified())) {
-            return true;
+            return new SystemEmailService.EmailSendResult(true, "Your account is already verified! You can sign in directly.");
         }
         String token = java.util.UUID.randomUUID().toString();
         user.setVerificationToken(token);
-        user.setVerificationTokenExpiry(java.time.LocalDateTime.now().plusHours(24));
-        userRepository.save(user);
+        user.setVerificationTokenExpiry(java.time.LocalDateTime.now(java.time.ZoneOffset.UTC).plusHours(24));
+        userRepository.saveAndFlush(user);
         return systemEmailService.sendVerificationEmail(user, token);
     }
 
@@ -338,12 +342,14 @@ public class AuthService {
      * Enforces a strict 30-minute validity window.
      */
     @Transactional
-    public boolean initiatePasswordReset(String email) {
-        if (email == null || email.isBlank()) return false;
+    public SystemEmailService.EmailSendResult initiatePasswordReset(String email) {
+        if (email == null || email.isBlank()) {
+            return new SystemEmailService.EmailSendResult(false, "Email address is required.");
+        }
         Optional<User> userOpt = findByEmail(email.trim().toLowerCase());
         if (userOpt.isEmpty()) {
             log.warn("Forgot password requested for unregistered email: [{}]", email);
-            return false;
+            return new SystemEmailService.EmailSendResult(false, "No account registered with this email address.");
         }
         User user = userOpt.get();
         String token = java.util.UUID.randomUUID().toString();

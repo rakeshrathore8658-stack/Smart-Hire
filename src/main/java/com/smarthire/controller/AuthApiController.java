@@ -4,6 +4,7 @@ import com.smarthire.dto.RegisterRequest;
 import com.smarthire.entity.User;
 import com.smarthire.repository.UserRepository;
 import com.smarthire.service.AuthService;
+import com.smarthire.service.SystemEmailService;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
@@ -35,6 +36,7 @@ public class AuthApiController {
     private final AuthService authService;
     private final UserRepository userRepository;
     private final com.smarthire.security.jwt.JwtUtil jwtUtil;
+    private final com.smarthire.service.SystemEmailService systemEmailService;
     private final SecurityContextRepository securityContextRepository = new HttpSessionSecurityContextRepository();
 
     private Map<String, Object> mapUser(User user) {
@@ -369,8 +371,44 @@ public class AuthApiController {
     }
 
     /**
+     * GET /api/auth/system-email-status
+     * Diagnostic endpoint for inspecting system email credentials configuration.
+     */
+    @GetMapping("/system-email-status")
+    public ResponseEntity<?> getSystemEmailStatus() {
+        SystemEmailService.EffectiveConfig config = systemEmailService.resolveEffectiveConfig();
+        if (config == null || config.apiKey() == null || config.apiKey().isBlank()) {
+            return ResponseEntity.ok(Map.of(
+                    "configured", false,
+                    "provider", "NONE",
+                    "source", "NONE",
+                    "senderEmail", systemEmailService.getEffectiveSenderEmail(),
+                    "senderName", systemEmailService.getEffectiveSenderName(),
+                    "frontendUrl", systemEmailService.getEffectiveFrontendUrl(),
+                    "message", "No email credentials found in Render environment variables or database. Set BREVO_API_KEY in Render."
+            ));
+        }
+
+        String maskedKey = config.apiKey().length() > 8
+                ? config.apiKey().substring(0, 6) + "..." + config.apiKey().substring(config.apiKey().length() - 4)
+                : "configured";
+
+        return ResponseEntity.ok(Map.of(
+                "configured", true,
+                "provider", config.provider(),
+                "source", config.source(),
+                "senderEmail", config.senderEmail(),
+                "senderName", config.senderName(),
+                "apiKeyPrefix", maskedKey,
+                "frontendUrl", systemEmailService.getEffectiveFrontendUrl(),
+                "message", "Email service is configured and ready."
+        ));
+    }
+
+    /**
      * POST /api/auth/resend-verification
      * Resends email verification link to user's registered email address.
+     * Reports actual delivery outcome clearly.
      */
     @PostMapping("/resend-verification")
     public ResponseEntity<?> resendVerification(@RequestBody Map<String, String> body) {
@@ -382,11 +420,29 @@ public class AuthApiController {
             ));
         }
 
-        authService.resendVerificationEmail(email.trim().toLowerCase());
-        return ResponseEntity.ok(Map.of(
-                "success", true,
-                "message", "If an unverified account exists for " + email.trim() + ", a new verification link has been sent to your inbox."
-        ));
+        String cleanEmail = email.trim().toLowerCase();
+        Optional<User> userOpt = authService.findByEmail(cleanEmail);
+        if (userOpt.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of(
+                    "success", false,
+                    "message", "No account registered with " + cleanEmail + ". Please create an account first."
+            ));
+        }
+
+        SystemEmailService.EmailSendResult result = authService.resendVerificationEmail(cleanEmail);
+        if (result.isSuccess()) {
+            return ResponseEntity.ok(Map.of(
+                    "success", true,
+                    "sent", true,
+                    "message", "A new verification link has been sent to " + cleanEmail + "! Please check your inbox and spam folder."
+            ));
+        } else {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
+                    "success", false,
+                    "sent", false,
+                    "message", "Could not deliver email: " + result.message()
+            ));
+        }
     }
 
     /**
@@ -460,17 +516,17 @@ public class AuthApiController {
                 ));
             }
 
-            boolean sent = authService.initiatePasswordReset(cleanEmail);
-            if (sent) {
+            SystemEmailService.EmailSendResult sent = authService.initiatePasswordReset(cleanEmail);
+            if (sent.isSuccess()) {
                 return ResponseEntity.ok(Map.of(
                         "success", true,
                         "registered", true,
                         "message", "A password reset link has been sent to " + cleanEmail + ". Please check your inbox (valid for 30 minutes)."
                 ));
             } else {
-                return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(Map.of(
+                return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE).body(Map.of(
                         "success", false,
-                        "message", "Failed to deliver reset email. Please ensure system email configuration is active or try again later."
+                        "message", "Failed to deliver reset email: " + sent.message()
                 ));
             }
         }

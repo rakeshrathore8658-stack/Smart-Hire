@@ -17,6 +17,10 @@ public interface HrEmailSettingRepository extends JpaRepository<HrEmailSetting, 
 
     Optional<HrEmailSetting> findFirstByHrUserIdAndIsActiveTrueOrderByIdDesc(Long hrUserId);
 
+    Optional<HrEmailSetting> findFirstByIsActiveTrueAndIsVerifiedTrueOrderByIdDesc();
+
+    Optional<HrEmailSetting> findFirstByIsActiveTrueOrderByIdDesc();
+
     boolean existsByHrUserId(Long hrUserId);
 
     void deleteByHrUserId(Long hrUserId);
