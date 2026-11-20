@@ -89,7 +89,17 @@ public class AuthService {
         User user = new User();
         user.setFullName(request.getFullName() != null ? request.getFullName().trim() : "SmartHire User");
         user.setEmail(email);
-        user.setPhoneNumber(request.getPhoneNumber() != null ? request.getPhoneNumber().trim() : null);
+
+        if (request.getPhoneNumber() != null && !request.getPhoneNumber().isBlank()) {
+            String cleanPhone = request.getPhoneNumber().trim().replaceAll("\\D", "");
+            if (cleanPhone.length() != 10) {
+                throw new IllegalArgumentException("Phone number must be exactly 10 digits (digits only).");
+            }
+            user.setPhoneNumber(cleanPhone);
+        } else {
+            user.setPhoneNumber(null);
+        }
+
         user.setPasswordHash(passwordEncoder.encode(request.getPassword()));
         user.setRole(assignedRole);
         user.setCareerRole(request.getCareerRole() != null && !request.getCareerRole().isBlank()
@@ -307,10 +317,11 @@ public class AuthService {
             return false;
         }
         user.setEmailVerified(true);
+        // Single-use token: Immediately destroy token so link can NEVER be opened or used again
         user.setVerificationToken(null);
         user.setVerificationTokenExpiry(null);
-        userRepository.save(user);
-        log.info("Email verified successfully for user [{}]", user.getEmail());
+        userRepository.saveAndFlush(user);
+        log.info("Email verified successfully and verification token permanently destroyed for user [{}]", user.getEmail());
         return true;
     }
 

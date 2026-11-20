@@ -139,11 +139,17 @@ const Login = () => {
     if (!unverifiedEmail) return;
     try {
       setResendingVerification(true);
-      setResendNotification('');
-      const res = await api.post('/auth/resend-verification', { email: unverifiedEmail });
-      setResendNotification(res.data?.message || 'Verification link sent! Please check your inbox.');
+      setResendNotification(null);
+      const res = await api.post('/auth/resend-verification', { email: unverifiedEmail.trim().toLowerCase() });
+      setResendNotification({
+        type: 'success',
+        message: res.data?.message || 'Verification link sent! Please check your inbox and spam folder.',
+      });
     } catch (err) {
-      setResendNotification(err.response?.data?.message || 'Could not resend email. Please try again.');
+      setResendNotification({
+        type: 'danger',
+        message: err.response?.data?.message || 'Could not resend email. Please try again.',
+      });
     } finally {
       setResendingVerification(false);
     }
@@ -354,29 +360,59 @@ const Login = () => {
                   </div>
                 )}
                 {unverifiedEmail && (
-                  <div style={{ marginTop: '10px' }}>
+                  <div style={{ marginTop: '12px' }}>
                     <button
                       type="button"
                       disabled={resendingVerification}
                       className="btn btn-primary btn-sm"
                       style={{
-                        padding: '6px 14px',
-                        fontSize: '0.82rem',
+                        padding: '8px 16px',
+                        fontSize: '0.84rem',
                         fontWeight: 700,
                         borderRadius: '6px',
                         background: 'linear-gradient(135deg, #FF7900 0%, #EA580C 100%)',
                         color: '#ffffff',
                         border: 'none',
                         cursor: resendingVerification ? 'not-allowed' : 'pointer',
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: '6px',
+                        boxShadow: '0 2px 8px rgba(255, 121, 0, 0.3)',
                       }}
                       onClick={handleResendVerification}
                     >
-                      {resendingVerification ? 'Sending Link...' : 'Resend Verification Email'}
+                      {resendingVerification ? (
+                        <>
+                          <span className="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                          Sending Email...
+                        </>
+                      ) : (
+                        <>
+                          <i className="bi bi-envelope-arrow-up-fill"></i>
+                          Resend Verification Email
+                        </>
+                      )}
                     </button>
                     {resendNotification && (
-                      <span style={{ display: 'block', marginTop: '6px', fontSize: '0.82rem', color: '#16a34a', fontWeight: 600 }}>
-                        {resendNotification}
-                      </span>
+                      <div
+                        style={{
+                          marginTop: '10px',
+                          padding: '10px 14px',
+                          borderRadius: '6px',
+                          fontSize: '0.84rem',
+                          lineHeight: '1.5',
+                          fontWeight: 600,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '8px',
+                          backgroundColor: resendNotification.type === 'success' ? '#f0fdf4' : '#fef2f2',
+                          color: resendNotification.type === 'success' ? '#166534' : '#991b1b',
+                          border: resendNotification.type === 'success' ? '1px solid #86efac' : '1px solid #fca5a5',
+                        }}
+                      >
+                        <i className={`bi ${resendNotification.type === 'success' ? 'bi-check-circle-fill' : 'bi-exclamation-triangle-fill'}`}></i>
+                        <span>{resendNotification.message}</span>
+                      </div>
                     )}
                   </div>
                 )}

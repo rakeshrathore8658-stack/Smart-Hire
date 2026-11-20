@@ -109,6 +109,11 @@ const Register = () => {
       return;
     }
 
+    if (phoneNumber && phoneNumber.trim().length !== 10) {
+      setErrorMessage('Phone number must be exactly 10 digits (digits only).');
+      return;
+    }
+
     setLoading(true);
 
     try {
@@ -515,17 +520,39 @@ const Register = () => {
 
               <div className="form-group">
                 <label className="form-label" htmlFor="phoneNumber">
-                  Phone Number
+                  Phone Number <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>(10 digits)</span>
                 </label>
-                <input
-                  type="tel"
-                  id="phoneNumber"
-                  name="phoneNumber"
-                  className="form-control"
-                  placeholder="+91 "
-                  value={phoneNumber}
-                  onChange={(e) => setPhoneNumber(e.target.value)}
-                />
+                <div style={{ display: 'flex', alignItems: 'center' }}>
+                  <span
+                    style={{
+                      padding: '10px 12px',
+                      background: 'var(--bg-card-hover, #f1f5f9)',
+                      border: '1px solid var(--border-color, #cbd5e1)',
+                      borderRight: 'none',
+                      borderRadius: '8px 0 0 8px',
+                      fontSize: '0.9rem',
+                      fontWeight: 700,
+                      color: 'var(--text-secondary, #64748b)',
+                      userSelect: 'none',
+                    }}
+                  >
+                    +91
+                  </span>
+                  <input
+                    type="tel"
+                    id="phoneNumber"
+                    name="phoneNumber"
+                    className="form-control"
+                    style={{ borderRadius: '0 8px 8px 0' }}
+                    placeholder="9876543210"
+                    maxLength={10}
+                    value={phoneNumber}
+                    onChange={(e) => {
+                      const onlyDigits = e.target.value.replace(/\D/g, '').slice(0, 10);
+                      setPhoneNumber(onlyDigits);
+                    }}
+                  />
+                </div>
               </div>
             </div>
 

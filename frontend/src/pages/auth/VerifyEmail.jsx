@@ -169,11 +169,29 @@ export default function VerifyEmail() {
               <h1 style={{ fontSize: '1.6rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 10px 0' }}>
                 Email Verified! 🎉
               </h1>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '28px' }}>
-                {message}
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem', lineHeight: '1.5', marginBottom: '20px' }}>
+                {message || 'Your email has been verified and your account is active.'}
               </p>
+              <div
+                style={{
+                  background: '#f0fdf4',
+                  border: '1px solid #86efac',
+                  borderRadius: '8px',
+                  padding: '10px 14px',
+                  marginBottom: '24px',
+                  fontSize: '0.84rem',
+                  color: '#166534',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                }}
+              >
+                <i className="bi bi-shield-check"></i>
+                <span>Single-use link deactivated &bull; Account secured</span>
+              </div>
               <Link
-                to="/login"
+                to="/login?verified=true"
                 className="btn btn-primary"
                 style={{
                   display: 'inline-block',
@@ -207,14 +225,35 @@ export default function VerifyEmail() {
                   marginBottom: '16px',
                 }}
               >
-                <i className="bi bi-exclamation-triangle-fill"></i>
+                <i className="bi bi-clock-history"></i>
               </div>
               <h1 style={{ fontSize: '1.5rem', fontWeight: 800, color: 'var(--text-primary)', margin: '0 0 10px 0' }}>
-                Verification Link Expired
+                Link Expired or Already Used
               </h1>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', lineHeight: '1.5', marginBottom: '24px' }}>
-                {message}
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.92rem', lineHeight: '1.5', marginBottom: '20px' }}>
+                {message || 'This verification link can only be used once and has already been used or has expired.'}
               </p>
+
+              <div style={{ marginBottom: '20px' }}>
+                <Link
+                  to="/login"
+                  style={{
+                    display: 'block',
+                    width: '100%',
+                    padding: '11px',
+                    fontWeight: 700,
+                    borderRadius: '8px',
+                    background: '#f1f5f9',
+                    color: 'var(--text-primary)',
+                    textDecoration: 'none',
+                    border: '1px solid var(--border-color, #cbd5e1)',
+                    fontSize: '0.92rem',
+                    marginBottom: '14px',
+                  }}
+                >
+                  <i className="bi bi-box-arrow-in-right" style={{ marginRight: '6px' }}></i> Already Verified? Sign In
+                </Link>
+              </div>
 
               {resendMessage && (
                 <div
